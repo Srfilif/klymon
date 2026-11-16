@@ -10,7 +10,7 @@ pnpm install
 pnpm dev
 ```
 
-Requirements: Node.js ≥ 20.11, pnpm 10, and — for launching the game — a Java runtime (the launcher can provision Mojang runtimes on its own). Rebuilding the bundled in-game menu mod (`pnpm client:build`) additionally needs a JDK 21.
+Requirements: Node.js ≥ 22.14, pnpm 10, and — for launching the game — a Java runtime (the launcher can provision Mojang runtimes on its own). Rebuilding the bundled in-game menu mod (`pnpm client:build`) additionally needs a JDK 21. Do not lower the Node floor: better-sqlite3 13 requires Node-API 10 (22.14+) and segfaults on older runtimes instead of throwing.
 
 `.npmrc` uses `node-linker=hoisted`. Keep it: the Electron main bundle and `electron-builder` both rely on a flat `node_modules`.
 

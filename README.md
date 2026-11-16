@@ -21,7 +21,7 @@ A modern Minecraft Java Edition launcher built with Electron, React and TypeScri
 
 ## Requirements
 
-- Node.js ≥ 20.11 and pnpm 10 (`corepack enable`).
+- Node.js ≥ 22.14 and pnpm 10 (`corepack enable`). The floor is set by better-sqlite3 13, which needs Node-API 10 (older Node segfaults on database access).
 - Windows, Linux or macOS. Packaging targets are configured for all three; only the Windows installer has been built and smoke-tested in this workspace.
 - A Minecraft: Java Edition licence for premium sign-in. Offline mode works without one (single-player and offline-mode servers only).
 - A JDK 21 on `PATH` **only** if you rebuild the bundled client menu mod (`pnpm client:build`). The committed jar is used otherwise.

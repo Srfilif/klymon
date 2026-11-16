@@ -25,6 +25,7 @@ All notable changes are documented here. Format follows [Keep a Changelog](https
 ### Fixed
 
 - Live playtime sync: the launcher used to record sessions only on game exit and the mod read a bridge frozen at launch, so playtime never updated while playing. Sessions now accrue every 30 s from the mod heartbeat (`klymon-session.json`, reconciled with the wall clock), refreshing points, quests, the launcher UI and the in-game bridge in both directions; the profile shows a live session card.
+- Linux CI crashes: raised the Node floor to >= 22.14 (better-sqlite3 13 needs Node-API 10 and segfaulted workers on Node 20 with `ERR_IPC_CHANNEL_CLOSED`), fixed a Windows-only `;` classpath split in the fabric-libraries test, and removed the purposeless shebang from `build-client-mod.mjs` (it broke Vitest collection of the importing test on older Node).
 - 3D skin preview for local skins: `klymon-media://` responses now carry `Access-Control-Allow-Origin: *` and the scheme is CORS-enabled, so skinview3d's CORS texture loads (required for WebGL upload) succeed instead of failing silently. Texture load failures now warn in the console.
 - Recovered all `packages/*` sources (lost during the monorepo move to `C:\Dev\Mc`) from the production bundles, tests and docs; full suite green (87 passed).
 

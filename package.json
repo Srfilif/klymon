@@ -6,7 +6,7 @@
   "license": "MIT",
   "packageManager": "pnpm@10.18.0",
   "engines": {
-    "node": ">=20.11"
+    "node": ">=22.14.0"
   },
   "scripts": {
     "dev": "pnpm --filter @klymon/desktop dev",

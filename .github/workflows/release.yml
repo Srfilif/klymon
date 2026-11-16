@@ -41,7 +41,9 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: 20
+          # Latest 22.x (>= 22.14): better-sqlite3 13 needs Node-API 10 and
+          # segfaults below 22.14 instead of failing cleanly.
+          node-version: 22
           cache: pnpm
 
       - name: Setup JDK 21

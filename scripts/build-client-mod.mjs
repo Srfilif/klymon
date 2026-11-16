@@ -1,8 +1,12 @@
-#!/usr/bin/env node
 /**
  * Builds the Klymon Client's Fabric mod (`client-mod/`) and drops the packaged
  * jar into `apps/desktop/resources/client-mod/klymon-menu.jar` so the launcher
  * can install it into the Klymon Client instance.
+ *
+ * NOTE: no shebang line on purpose. This module is imported by tests, and a
+ * hashbang makes Vitest collection fail with `SyntaxError: Invalid or
+ * unexpected token` on older Node runtimes. It is always invoked explicitly
+ * (`node scripts/build-client-mod.mjs`), so nothing needs the shebang.
  *
  * The project deliberately avoids Gradle/Loom: the mod is two small classes,
  * and the whole toolchain is `javac` + `tiny-remapper` + the Yarn mappings.

@@ -1,6 +1,6 @@
 import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, join } from 'node:path';
 import type { LauncherPaths } from '@klymon/core';
 import { buildClasspath, clientJarPath, VersionInstaller } from '@klymon/version-manager';
 import type { ResolvedVersion } from '@klymon/version-manager';
@@ -45,7 +45,7 @@ describe('Fabric loader libraries', () => {
       'client.jar',
     );
     expect(classpath).toContain(jar);
-    expect(classpath.split(';').at(-1)).toBe('client.jar');
+    expect(classpath.split(delimiter).at(-1)).toBe('client.jar');
   });
 
   it('uses the inherited vanilla client jar for loader profiles', () => {
