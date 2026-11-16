@@ -114,6 +114,10 @@ export function AppProvider({ children }: { children: ReactNode }): React.JSX.El
 
   useEvent('launch:state', (state) => setLaunch(state));
 
+  useEvent('progression:reward', (reward) => {
+    toast(`${reward.title} — ${reward.detail}`, 'success');
+  });
+
   useEvent('download:progress', (status) => {
     setDownloads((current) => {
       const next = current.filter((entry) => entry.id !== status.id);

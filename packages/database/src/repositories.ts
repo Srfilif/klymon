@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { and, asc, desc, eq, sql } from 'drizzle-orm';
 import {
   accountsTable,
@@ -5,9 +6,15 @@ import {
   backupsTable,
   cacheTable,
   contentTable,
+  cosmeticLoadoutTable,
+  cosmeticsInventoryTable,
+  dailyClaimsTable,
   instancesTable,
   playlistsTable,
   playlistTracksTable,
+  pointsLedgerTable,
+  progressionProfileTable,
+  questProgressTable,
   serversTable,
   settingsTable,
   skinsTable,
@@ -17,9 +24,15 @@ import {
   type ActivityRow,
   type BackupRow,
   type ContentRow,
+  type CosmeticLoadoutRow,
+  type CosmeticsInventoryRow,
+  type DailyClaimRow,
   type InstanceRow,
   type LauncherDatabase,
   type PlaylistRow,
+  type PointsLedgerRow,
+  type ProgressionProfileRow,
+  type QuestProgressRow,
   type ServerRow,
   type SkinRow,
   type TrackRow,
@@ -356,5 +369,149 @@ export class MusicRepository {
     trackIds.forEach((trackId, index) => {
       this.db.insert(playlistTracksTable).values({ playlistId, trackId, position: index }).run();
     });
+  }
+}
+
+/**
+ * Local progression storage (points, cosmetics, quests, dailies).
+ *
+ * Integrity model: the numeric counters carry a SHA-256 seal keyed by a
+ * per-install secret (generated once, stored in the settings table). This is
+ * tamper-*evident*, not tamper-proof: a local user can always edit their own
+ * database, but casual edits are detected and surfaced instead of silently
+ * trusted. Points are never presented as transferable or server-verified.
+ */
+export class ProgressionRepository {
+  constructor(
+    private readonly db: LauncherDatabase,
+    private readonly sealSecret: () => string,
+  ) {}
+
+  computeSeal(row: Pick<ProgressionProfileRow, 'lifetimePoints' | 'spentPoints' | 'playSeconds' | 'sessions'>): string {
+    const canonical = [row.lifetimePoints, row.spentPoints, row.playSeconds, row.sessions].join(':');
+    return createHash('sha256').update(`${this.sealSecret()}:${canonical}`).digest('hex');
+  }
+
+  sealValid(row: ProgressionProfileRow): boolean {
+    if (!row.seal) return true; // rows written before sealing are grandfathered once, then sealed
+    return row.seal === this.computeSeal(row);
+  }
+
+  profile(): ProgressionProfileRow {
+    const rows = this.db.select().from(progressionProfileTable).where(eq(progressionProfileTable.id, 'local')).all();
+    const existing = rows[0];
+    if (existing) return existing;
+    const now = new Date().toISOString();
+    const fresh: ProgressionProfileRow = {
+      id: 'local',
+      lifetimePoints: 0,
+      spentPoints: 0,
+      playSeconds: 0,
+      sessions: 0,
+      daysJson: '[]',
+      streakCount: 0,
+      streakLastDay: null,
+      firstSeenAt: now,
+      identityJson: '{}',
+      seal: '',
+      updatedAt: now,
+    };
+    fresh.seal = this.computeSeal(fresh);
+    this.db.insert(progressionProfileTable).values(fresh).run();
+    return fresh;
+  }
+
+  saveProfile(patch: Partial<ProgressionProfileRow>): ProgressionProfileRow {
+    const current = this.profile();
+    const next: ProgressionProfileRow = {
+      ...current,
+      ...patch,
+      id: 'local',
+      updatedAt: new Date().toISOString(),
+    };
+    next.seal = this.computeSeal(next);
+    this.db.update(progressionProfileTable).set(next).where(eq(progressionProfileTable.id, 'local')).run();
+    return next;
+  }
+
+  addLedgerEntry(entry: PointsLedgerRow): void {
+    this.db.insert(pointsLedgerTable).values(entry).run();
+    this.db.run(sql`DELETE FROM points_ledger WHERE id NOT IN (SELECT id FROM points_ledger ORDER BY created_at DESC LIMIT 2000)`);
+  }
+
+  ledger(limit = 100): PointsLedgerRow[] {
+    return this.db.select().from(pointsLedgerTable).orderBy(desc(pointsLedgerTable.createdAt)).limit(limit).all();
+  }
+
+  earnedOnDay(dayKey: string): number {
+    const rows = this.db
+      .select({ total: sql<number>`COALESCE(SUM(CASE WHEN delta > 0 THEN delta ELSE 0 END), 0)` })
+      .from(pointsLedgerTable)
+      .where(eq(pointsLedgerTable.dayKey, dayKey))
+      .all();
+    return rows[0]?.total ?? 0;
+  }
+
+  inventory(): CosmeticsInventoryRow[] {
+    return this.db.select().from(cosmeticsInventoryTable).orderBy(asc(cosmeticsInventoryTable.acquiredAt)).all();
+  }
+
+  owns(cosmeticId: string): boolean {
+    const rows = this.db.select().from(cosmeticsInventoryTable).where(eq(cosmeticsInventoryTable.cosmeticId, cosmeticId)).all();
+    return rows.length > 0;
+  }
+
+  grant(cosmeticId: string, source: string): void {
+    if (this.owns(cosmeticId)) return;
+    this.db.insert(cosmeticsInventoryTable).values({ cosmeticId, acquiredAt: new Date().toISOString(), source }).run();
+  }
+
+  loadout(): CosmeticLoadoutRow[] {
+    return this.db.select().from(cosmeticLoadoutTable).all();
+  }
+
+  setLoadout(slot: string, cosmeticId: string | null): void {
+    this.db
+      .insert(cosmeticLoadoutTable)
+      .values({ slot, cosmeticId })
+      .onConflictDoUpdate({ target: cosmeticLoadoutTable.slot, set: { cosmeticId } })
+      .run();
+  }
+
+  questState(questId: string, windowKey: string): QuestProgressRow | null {
+    const rows = this.db
+      .select()
+      .from(questProgressTable)
+      .where(and(eq(questProgressTable.questId, questId), eq(questProgressTable.windowKey, windowKey)))
+      .all();
+    return rows[0] ?? null;
+  }
+
+  questStatesForWindow(windowKey: string): QuestProgressRow[] {
+    return this.db.select().from(questProgressTable).where(eq(questProgressTable.windowKey, windowKey)).all();
+  }
+
+  allQuestStates(): QuestProgressRow[] {
+    return this.db.select().from(questProgressTable).all();
+  }
+
+  saveQuestState(row: QuestProgressRow): void {
+    this.db
+      .insert(questProgressTable)
+      .values(row)
+      .onConflictDoUpdate({
+        target: [questProgressTable.questId, questProgressTable.windowKey],
+        set: { progress: row.progress, completed: row.completed, completedAt: row.completedAt, claimed: row.claimed },
+      })
+      .run();
+  }
+
+  dailyClaim(dayKey: string): DailyClaimRow | null {
+    const rows = this.db.select().from(dailyClaimsTable).where(eq(dailyClaimsTable.dayKey, dayKey)).all();
+    return rows[0] ?? null;
+  }
+
+  recordDailyClaim(row: DailyClaimRow): void {
+    this.db.insert(dailyClaimsTable).values(row).onConflictDoNothing().run();
   }
 }

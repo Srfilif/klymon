@@ -1,5 +1,7 @@
 package com.klymon.clientmenu;
 
+import com.klymon.clientmenu.cosmetic.KlymonBridge;
+
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
@@ -68,9 +70,12 @@ public final class KlymonHubScreen extends Screen {
         context.fill(panelX + 22, panelY + 46, panelX + PANEL_WIDTH - 22, panelY + 47,
                 KlymonTheme.alpha(KlymonTheme.accent(), 0x50));
 
-        String user = this.client != null ? this.client.getSession().getUsername() : "?";
-        KlymonTheme.labeledValue(context, this.textRenderer, user,
-                KlymonMenuClient.modVersion(), panelX + 22, panelY + 230, PANEL_WIDTH - 44);
+        String sessionName = this.client != null ? this.client.getSession().getUsername() : "?";
+        KlymonBridge identity = KlymonBridge.get();
+        KlymonTheme.labeledValue(context, this.textRenderer, identity.displayName(sessionName),
+                Text.translatable("klymon.level.short").getString() + " " + identity.level()
+                        + " · " + KlymonMenuClient.modVersion(),
+                panelX + 22, panelY + 230, PANEL_WIDTH - 44);
     }
 
     @Override

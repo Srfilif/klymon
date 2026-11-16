@@ -12,6 +12,10 @@ All notable changes are documented here. Format follows [Keep a Changelog](https
 - In-game Performance tab with live installed/missing detection for the eight evaluated performance mods.
 - Headless Java logic suite (`LogicTest`, 80+ assertions) executed from `tests/client-addons.test.ts`.
 - Skins page preview modes: flat 2D paper-doll render (with overlay layer, slim support and legacy mirroring) next to the 3D viewer, which now takes the explicit arm model, right-drag panning and zoom in/out/reset controls.
+- Local progression ecosystem (`@klymon/progression` + `ProgressionService` + 11 `progression:*` IPC channels): points for playtime/sessions/dailies/quests, level curve, points ledger, tamper-evident SQLite storage (migration `0002_progression`), and a versioned `config/klymon-bridge.json` export for the game.
+- Cosmetics shop and inventory (28 items across cape/wings/hat/particles/aura/trail/pet/emote/entrance/profile, five rarities), equip/unequip loadout, daily streak rewards, rotating daily/weekly quests and permanent achievements with claim flow.
+- Player profile page (identity, level, stats, loadout, points history), quests page, shop page, header balance chip and reward toasts; Spanish/English strings throughout.
+- `klymon-menu` 1.3.0: `[K]` identity on every Klymon surface, in-game player profile screen, level-progress HUD addon, and real client-side cosmetics (procedural cape/wings, item hats/pets, particle trails/auras, entrance bursts, emote keybind).
 
 ### Changed
 

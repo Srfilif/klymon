@@ -1,9 +1,11 @@
-# Klymon Client mod (`klymon-menu` 1.2.0)
+# Klymon Client mod (`klymon-menu` 1.3.0)
 
 The first-party Fabric mod behind the client's interface, in the spirit of
-Salwyrr Client: its own main menu, a modular addon system with 13 built-in
+Salwyrr Client: its own main menu, a modular addon system with 14 built-in
 modules, a visual HUD editor, configuration profiles with per-server
-auto-load, and live reporting of the launcher-managed performance mods.
+auto-load, `[K]` player identity, an in-game profile screen, and real
+client-side cosmetics driven by the launcher, plus live reporting of the
+launcher-managed performance mods.
 
 - Mod id: `klymon-menu`
 - Environment: `client`
@@ -30,6 +32,7 @@ type; each addon offers "Reset defaults".
 | `watermark` | HUD | Klymon watermark with optional version |
 | `coordinates` | HUD | Position with labels/facing options |
 | `custom-crosshair` | Visual | 4 presets + size/gap/thickness/colours/outline, live preview |
+| `level-progress` | HUD | Klymon level, points balance and level progress bar |
 | `toggle-sprint-sneak` | Utility | One-tap sprint/sneak on vanilla keys only, state indicators |
 | `fullbright` | Utility | Brightness boost with previous-value restore |
 
@@ -65,6 +68,7 @@ migrated into the Default profile on first run.
 | --- | --- | --- |
 | `KlymonTitleScreen` | Replaces vanilla title | Modes, client settings, addons, vanilla options, quit |
 | `KlymonHubScreen` | Right Shift in game | Settings, addons, HUD editor, profiles, diagnostics |
+| `KlymonPlayerProfileScreen` | Settings → profile | Level, points, playtime, equipped cosmetics (read-only) |
 | `KlymonPauseScreen` | Esc pause menu | Vanilla pause untouched, plus client-settings and addons shortcuts |
 | `KlymonSettingsScreen` | Title/hub | Master HUD, scale, accent, profile shortcut, editor, diagnostics |
 | `KlymonAddonsScreen` | Title/hub | Category tabs, toggles, per-addon config, live perf status |
@@ -105,6 +109,22 @@ and is committed, because the launcher ships it as an `extraResources` entry.
 `ClientService` copies it into the Klymon Client instance's `mods/` directory
 on install and launch (SHA-1 compared, so it is a no-op when current).
 
+## Identity and cosmetics (local)
+
+The launcher exports `config/klymon-bridge.json` (versioned, see
+`ProgressionService.exportBridge`) with the `[K]` identity, level, points and
+loadout. `cosmetic.KlymonBridge` reads it leniently — a missing or outdated
+file degrades to prefix `[K]`, level 1, no cosmetics.
+
+- Identity: title/hub screens, watermark surfaces and the profile screen show
+  the decorated `[K] name` + level. The account name is never mutated.
+- `CosmeticFeatureRenderer` draws the equipped cape/wings (procedural gradient
+  textures rasterized at runtime) and hats/pets (vanilla items) on the local
+  player. `CosmeticsManager` spawns trail/aura/entrance particles from the
+  bridge ids and plays the equipped emote flourish on `G`.
+- Everything is local-player only: other players would need the same bridge
+  file, which only a future server could distribute.
+
 ## Known limitations
 
 - The custom crosshair draws **over** the vanilla one: suppressing vanilla's
@@ -115,3 +135,9 @@ on install and launch (SHA-1 compared, so it is a no-op when current).
   it visibly thicker.
 - The HUD editor pauses with the game in singleplayer (vanilla behaviour for
   open screens); layout still edits live.
+- The `[K]` prefix is shown on Klymon-owned surfaces only. Nametags above
+  players' heads and tab-list entries on servers are controlled by the server
+  (scoreboard teams / server plugins); a client cannot change them. Showing
+  other Klymon users' prefixes would require a server-side companion.
+- Cosmetics render for the local player only (see above): without a server,
+  other players cannot receive your bridge file.

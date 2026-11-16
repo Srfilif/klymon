@@ -7,13 +7,16 @@ import type {
   ContentSearchResult,
   ContentSource,
   ContentVersion,
+  CosmeticModel,
   CrashDiagnosis,
+  DailyStateModel,
   DownloadStatus,
   Instance,
   InstalledContent,
   JavaRuntime,
   JvmPreset,
   LaunchState,
+  LedgerEntryModel,
   LoaderType,
   LoaderVersionOption,
   LogLine,
@@ -22,6 +25,9 @@ import type {
   MusicTrack,
   NewsItem,
   Playlist,
+  ProgressionProfileModel,
+  QuestStateModel,
+  RewardEvent,
   Settings,
   SkinRecord,
   SystemInfo,
@@ -137,6 +143,17 @@ export const IPC_CHANNELS = [
   'logs:open-game-log',
   'logs:read-game-log',
   'downloads:status',
+  'progression:profile',
+  'progression:ledger',
+  'progression:catalog',
+  'progression:buy',
+  'progression:equip',
+  'progression:unequip',
+  'progression:quests',
+  'progression:claim-quest',
+  'progression:daily',
+  'progression:claim-daily',
+  'progression:set-title',
 ] as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[number];
@@ -195,7 +212,8 @@ export type DataChangedScope =
   | 'instances'
   | 'content'
   | 'skins'
-  | 'servers';
+  | 'servers'
+  | 'progression';
 
 /** Request/response types per channel; requests mirror the zod IPC schemas. */
 export interface IpcContract {
@@ -292,6 +310,17 @@ export interface IpcContract {
   'logs:open-game-log': { req: { instanceId: z.infer<typeof zInstanceId> }; res: string | null };
   'logs:read-game-log': { req: { instanceId: z.infer<typeof zInstanceId> }; res: string };
   'downloads:status': { req: void; res: import('./models').DownloadStatus[] };
+  'progression:profile': { req: void; res: ProgressionProfileModel };
+  'progression:ledger': { req: { limit?: number }; res: LedgerEntryModel[] };
+  'progression:catalog': { req: void; res: CosmeticModel[] };
+  'progression:buy': { req: { id: string }; res: { profile: ProgressionProfileModel; cosmetic: CosmeticModel } };
+  'progression:equip': { req: { id: string }; res: ProgressionProfileModel };
+  'progression:unequip': { req: { slot: string }; res: ProgressionProfileModel };
+  'progression:quests': { req: void; res: { daily: QuestStateModel[]; weekly: QuestStateModel[]; achievements: QuestStateModel[] } };
+  'progression:claim-quest': { req: { id: string }; res: { profile: ProgressionProfileModel; quest: QuestStateModel } };
+  'progression:daily': { req: void; res: DailyStateModel };
+  'progression:claim-daily': { req: void; res: { profile: ProgressionProfileModel; daily: DailyStateModel } };
+  'progression:set-title': { req: { titleId: string | null }; res: ProgressionProfileModel };
 }
 
 export interface InstallProgressEvent {
@@ -313,6 +342,7 @@ export interface IpcEventMap {
   'client:progress': ClientStatus;
   'data:changed': { scope: DataChangedScope };
   'auth:device-code': DeviceCodeInfo;
+  'progression:reward': RewardEvent;
 }
 
 export type IpcEventName = keyof IpcEventMap;

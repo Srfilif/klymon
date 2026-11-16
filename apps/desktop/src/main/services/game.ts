@@ -11,6 +11,7 @@ import type { LaunchPhase, LaunchState, LoaderType, VersionInstallResult } from 
 import type { SettingsService } from './settings';
 import type { AccountService } from './accounts';
 import type { CrashService } from './crash';
+import type { ProgressionService } from './progression';
 
 export interface GameServiceDeps {
   paths: LauncherPaths;
@@ -25,6 +26,7 @@ export interface GameServiceDeps {
   accounts: AccountService;
   settings: SettingsService;
   crash: CrashService;
+  progression: ProgressionService | null;
   launcherVersion: string;
   emit: (event: 'launch:state' | 'game:log' | 'game:crash', payload: unknown) => void;
 }
@@ -226,6 +228,15 @@ export class GameService {
         },
         onExit: (code) => {
           const seconds = this.startedAt ? (Date.now() - this.startedAt) / 1000 : 0;
+          try {
+            this.deps.progression?.onSessionEnd({ seconds, instanceName: refreshed.name });
+            void this.deps.progression?.exportBridge();
+          } catch (error) {
+            this.deps.logger.warn(
+              'progression',
+              `Session rewards failed: ${error instanceof Error ? error.message : String(error)}`,
+            );
+          }
           this.deps.instances.recordLaunch(instanceId, seconds);
           this.deps.instanceRepo.update(instanceId, { lastPlayedAt: new Date().toISOString() });
           this.deps.activity.add({

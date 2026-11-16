@@ -65,6 +65,9 @@ importers:
       '@klymon/performance-manager':
         specifier: workspace:*
         version: link:../../packages/performance-manager
+      '@klymon/progression':
+        specifier: workspace:*
+        version: link:../../packages/progression
       '@klymon/shared-types':
         specifier: workspace:*
         version: link:../../packages/shared-types
@@ -309,6 +312,15 @@ importers:
       systeminformation:
         specifier: ^5.27.11
         version: 5.33.23
+
+  packages/progression:
+    dependencies:
+      '@klymon/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
+      zod:
+        specifier: ^4.1.12
+        version: 4.6.7
 
   packages/shared-types:
     dependencies:

@@ -522,4 +522,17 @@ export function registerIpcHandlers(context: AppContext, updater: UpdaterService
     return redactSecrets(lines.slice(-1500).join('\n'));
   });
   handle('downloads:status', () => context.downloads.statuses());
+
+  // ── Progression (local points, levels, cosmetics, quests) ──────────────────
+  handle('progression:profile', () => context.progression.profile());
+  handle('progression:ledger', (payload) => context.progression.ledger(payload?.limit ?? 100));
+  handle('progression:catalog', () => context.progression.catalog());
+  handle('progression:buy', ({ id }) => context.progression.buy(id));
+  handle('progression:equip', ({ id }) => context.progression.equip(id));
+  handle('progression:unequip', ({ slot }) => context.progression.unequip(slot));
+  handle('progression:quests', () => context.progression.quests());
+  handle('progression:claim-quest', ({ id }) => context.progression.claimQuest(id));
+  handle('progression:daily', () => context.progression.daily());
+  handle('progression:claim-daily', () => context.progression.claimDaily());
+  handle('progression:set-title', ({ titleId }) => context.progression.setTitle(titleId));
 }

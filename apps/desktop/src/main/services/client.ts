@@ -7,6 +7,7 @@ import { ModrinthClient, type ContentManager } from '@klymon/mod-manager';
 import type { ClientStatus, Instance as InstanceModel, LoaderType } from '@klymon/shared-types';
 import type { SettingsService } from './settings';
 import type { GameService } from './game';
+import type { ProgressionService } from './progression';
 import { installBranding } from './branding';
 
 /** File name of the bundled Fabric menu mod inside `resources/client-mod`. */
@@ -72,6 +73,7 @@ export interface ClientServiceDeps {
   logger: LauncherLogger;
   /** Absolute path of the bundled menu mod, or null when it was not packaged. */
   clientModPath: string | null;
+  progression: ProgressionService | null;
   emit: (status: ClientStatus) => void;
 }
 
@@ -254,6 +256,7 @@ export class ClientService {
 
       this.update({ progress: 0.98, message: 'Aplicando pack de marca Klymon' });
       await installBranding(instance.gameDir, this.deps.logger, { force: true });
+      await this.deps.progression?.exportBridge();
 
       this.update({ phase: 'ready', progress: 1, message: 'Klymon Client listo', error: null, instanceId: instance.id });
       return this.status();
@@ -284,6 +287,8 @@ export class ClientService {
     await installBranding(instance.gameDir, this.deps.logger).catch((error: unknown) =>
       this.deps.logger.warn('client', `Could not apply branding pack: ${error instanceof Error ? error.message : String(error)}`),
     );
+    // Refresh the identity/cosmetics bridge so the mod shows the latest state.
+    await this.deps.progression?.exportBridge();
     return this.deps.game.launch(instance.id);
   }
 }

@@ -51,11 +51,25 @@ Legend: **✅** implemented and covered by automated tests · **🔵** implement
 | Default installation | ✅ | Onboarding offers it checked by default and starts the install in the background; the Home card shows progress and re-runs as "Repair & update". |
 | One-click play | ✅ | Launches the client instance through the normal launch pipeline (needs an account). |
 | Branding resource pack | ✅ | Procedurally generated pack (360° klymon panorama, overlay, 16 splash texts, icon) installed into `resourcepacks/` and enabled in `options.txt`. Verified end-to-end (221 KB, 10 entries, keeps existing settings) and visually in-game: the title screen renders the Klymon panorama and a custom splash. |
-| Custom client UI (`klymon-menu`) | ✅ | A first-party Fabric mod compiled by `pnpm client:build` (javac + Yarn mappings + `tiny-remapper`) and shipped inside the app as `client-mod/klymon-menu.jar`. It replaces the title screen with an Klymon menu (Singleplayer, Multiplayer, client settings, addons, **vanilla Minecraft options**, quit; account and version chips), and Right Shift opens the same hub in game. Verified live: `Klymon Client menu 1.1.0 attached to the title screen`. |
+| Custom client UI (`klymon-menu`) | ✅ | A first-party Fabric mod compiled by `pnpm client:build` (javac + Yarn mappings + `tiny-remapper`) and shipped inside the app as `client-mod/klymon-menu.jar`. It replaces the title screen with an Klymon menu (Singleplayer, Multiplayer, client settings, addons, **vanilla Minecraft options**, quit; `[K]` identity, level and version chips), and Right Shift opens the same hub in game. |
 | Client settings screen | ✅ | HUD on/off, HUD scale (75–150 %), HUD corner, accent colour, toggle sprint, toggle sneak and fullbright. Stored in `config/klymon-client.properties` and applied immediately. |
 | Client addons screen | ✅ | Toggles the nine bundled HUD modules (watermark, FPS, CPS, ping, coordinates, keystrokes, armour, potions, sprint/sneak indicators), with descriptions, enable/disable all and the explicit note that it configures existing modules instead of installing new ones. |
 | Modular HUD | ✅ | Scalable column in any screen corner: FPS, CPS (left/right), ping colour-coded by latency, coordinates, WASD + LMB/RMB keystrokes, armour durability, potion effects with level and timer, and sprint/sneak indicators. |
 | Stale-mod pruning | ✅ | Slugs dropped from the curated list are recorded in `retiredSlugs` and removed from `mods/` on install. This fixed a real launch failure where `Cull Less Leaves` declared `sodium <0.6` and hard-failed Fabric loading after the move to Sodium 0.8. |
+
+## Progression, cosmetics and identity (local)
+
+| Feature | Status | Notes |
+| --- | --- | --- |
+| `[K]` identity | ✅ | Automatic prefix on every Klymon surface (launcher header, title/hub/profile screens, HUD); rank/title system ready for future ranks; the Minecraft account name is never mutated. Server-controlled nametags cannot be changed from the client. |
+| Points economy | ✅ | Playtime (2/min), session bonus (25), first-session bonus (15), quest/daily rewards; daily play cap (360 min) and daily points cap (1500); append-only ledger with balance. |
+| Levels | ✅ | Shared TS/Java curve (`50·L·(L−1)`); progress bar, level-up toasts, in-game level HUD addon. |
+| Daily rewards | ✅ | 7-day streak ladder with clock-skew protection; claimable from the Quests page. |
+| Quests & achievements | ✅ | 3 rotating dailies + 3 rotating weeklies (deterministic per date) and 13 permanent achievements, with progress tracking and a claim flow; quest completions can grant cosmetics. |
+| Cosmetics shop & inventory | ✅ | 28 items in 10 slots, five rarities, prices/levels/quest gates, CSS previews, buy/equip/unequip; loadout persisted and exported to the game. |
+| Player profile | ✅ | Identity, level, balance, stats, titles, loadout and points history; header balance chip; explicit local-only disclaimer. |
+| In-game cosmetics | ✅ | `klymon-menu` 1.3.0 renders the equipped cape/wings (procedural textures), hats/pets (vanilla items), particle trails/auras, entrance bursts and an emote keybind — local player only. |
+| Anti-exploit (local) | 🔵 | Daily caps, clamped durations, monotonic streak checks and a tamper-evident seal detect casual edits; local data is inherently editable and never presented as verified or transferable. |
 
 ## Instances and content
 
@@ -98,10 +112,11 @@ Legend: **✅** implemented and covered by automated tests · **🔵** implement
 
 | Item | Status | Notes |
 | --- | --- | --- |
-| Unit/integration tests (Vitest) | ✅ | 13 files, 72 tests: offline UUID, path safety, launch args, Java parsing, crash analysis, skin PNG, database repositories/migrations, download manager, Fabric library resolution, branding pack generation, Klymon Client profile, shipped mod jar, client UI classes and es/en dictionary parity. |
+| Unit/integration tests (Vitest) | ✅ | 15 files, 100 tests: offline UUID, path safety, launch args, Java parsing, crash analysis, skin PNG, database repositories/migrations, download manager, Fabric library resolution, branding pack generation, Klymon Client profile, shipped mod jar, client UI classes and es/en dictionary parity, plus the progression suite (economy, catalog/quest validation, seal integrity, shop/quest/daily service flows). |
 | Live install E2E | ✅ | `tests/e2e-install.test.ts` — real 1.5.2 and Fabric 1.21.1 downloads. |
 | Live launch E2E | ✅ | `tests/e2e-launch.test.ts` — boots Minecraft 1.5.2. |
 | Klymon Client end-to-end verification | ✅ | `scripts/verify-client.mjs` drives the built app over CDP: runs `client:install` through IPC, asserts the menu jar and retired-slug pruning, launches the real game and requires fresh log lines (Fabric loader, `klymon-menu`, LWJGL backend, title-screen attach) with no renderer console errors. |
+| Progression end-to-end verification | ✅ | `scripts/verify-progression.mjs` drives the built app over CDP against a throwaway profile: `[K]` identity, 28-item catalog, buy/equip/unequip, quest rotation + claim, daily streak, ledger and zero renderer exceptions. |
 | UI smoke test | ✅ | `scripts/smoke.mjs` drives the built app over the DevTools protocol (Playwright-equivalent, no extra dependency). |
 | Playwright | ⛔ | Not used; replaced by the CDP smoke test above. |
 | Windows installer (NSIS) | ✅ | Built and the packaged app was smoke-tested (`isPackaged: true`, SQLite migrations run, zero console errors). |

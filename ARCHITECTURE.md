@@ -1,6 +1,6 @@
 # Architecture
 
-Klymon Launcher is a pnpm monorepo: one Electron application plus thirteen focused TypeScript packages. The renderer never talks to the network, the filesystem or the game directly — everything goes through a narrow, validated IPC boundary.
+Klymon Launcher is a pnpm monorepo: one Electron application plus fourteen focused TypeScript packages. The renderer never talks to the network, the filesystem or the game directly — everything goes through a narrow, validated IPC boundary.
 
 ```
 ┌──────────────────────────────────────────── renderer (React) ────────────────────────────────────────────┐
@@ -10,13 +10,14 @@ Klymon Launcher is a pnpm monorepo: one Electron application plus thirteen focus
                                                 │ contextBridge (preload, sandboxed)
 ┌───────────────────────────────────────────────▼──────────────────────────────────────────────────────────┐
 │ main process                                                                                             │
-│  ipc.ts (87 channels, zod validation, sender check)  security.ts (CSP, navigation, permissions)          │
-│  services/  context · game · client · accounts · settings · secrets · news · updater · crash             │
+│  ipc.ts (98 channels, zod validation, sender check)  security.ts (CSP, navigation, permissions)          │
+│  services/  context · game · client · accounts · settings · secrets · news · updater · crash · progression │
 │  protocols.ts  app://bundle · klymon-media://data · klymon-music://music                                 │
 ├──────────────────────────────────────────────────────────────────────────────────────────────────────────┤
 │ packages (pure Node/TS, no Electron imports except safeStorage adapters in the app layer)                 │
 │  core · shared-types · database · download-manager · authentication · version-manager · java-manager      │
 │  instance-manager · modloader-manager · mod-manager · skin-manager · performance-manager · music-manager  │
+│  progression                                                                                              │
 └──────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -47,16 +48,17 @@ The window is created with a strict `webPreferences` set (`security.ts`), loaded
 | `skin-manager` | Skin PNG validation, local library (import, rename, arm model, delete), player skin lookup via Mojang profile/session APIs, and skin upload/reset. |
 | `performance-manager` | CPU/RAM detection and memory/JVM argument recommendations. |
 | `music-manager` | Local music scanning, metadata parsing, playlists. |
+| `progression` | Pure local-progression rules: points economy, level curve, cosmetics catalog, quest/achievement definitions, identity ranks and titles. No Electron, no I/O. |
 
 Packages contain no UI and no Electron API calls where avoidable; `better-sqlite3` and `safeStorage` adapters are injected by the app layer.
 
 ## IPC
 
-- 87 channels of the form `domain:action` (`versions:list`, `content:install`, `accounts:loginMicrosoft`, …).
+- 98 channels of the form `domain:action` (`versions:list`, `content:install`, `progression:buy`, …).
 - Every payload is validated with a zod schema (`apps/desktop/src/main/ipc-schemas.ts`) before it reaches a service.
 - Handlers verify `event.senderFrame`/origin and reject invocations that do not come from the bundled renderer.
 - Errors are serialised to a stable shape (`code`, `message`, `details`) and rethrown in the renderer as `LauncherError`.
-- Events flow the other way through `webContents.send` on a fixed set of channels (`log:line`, `install:progress`, `download:progress`, `game:state`, `update:status`). The preload subscribes with `window.klymon.on`.
+- Events flow the other way through `webContents.send` on a fixed set of channels (`log:line`, `install:progress`, `download:progress`, `game:state`, `update:status`, `progression:reward`, …). The preload subscribes with `window.klymon.on`.
 
 ## Custom protocols
 
@@ -113,6 +115,10 @@ Merged profiles are written as their own version id, so the base version stays p
 | `backups` | Instance exports |
 | `music_tracks`, `playlists`, `playlist_tracks` | Music library |
 | `cache_entries` | TTL cache for API responses |
+| `progression_profile` | Local progression counters (points, playtime, streak, identity) with a tamper-evident seal |
+| `points_ledger` | Append-only points history (earn/spend with running balance) |
+| `cosmetics_inventory`, `cosmetic_loadout` | Owned cosmetics and the equipped item per slot |
+| `quest_progress`, `daily_claims` | Quest progress per window and claimed daily rewards |
 
 ## Klymon Client
 
@@ -126,10 +132,12 @@ The companion branding pack (`services/branding.ts`) is generated at install tim
 
 ### Client UI
 
-`client-mod/` is a Fabric mod (`klymon-menu` 1.2.0) that owns the client shell, Salwyrr-style: a modular addon system, a visual HUD editor and configuration profiles.
+`client-mod/` is a Fabric mod (`klymon-menu` 1.3.0) that owns the client shell, Salwyrr-style: a modular addon system, a visual HUD editor, configuration profiles, player identity and client-side cosmetics.
 
-- `KlymonTitleScreen` replaces the vanilla title screen with an Klymon card: Singleplayer, Multiplayer, client settings, addons, **vanilla Minecraft options** and quit, plus the account name and Minecraft/Fabric versions. It uses the vanilla panorama/blur background and adapts its height to small scaled resolutions.
+- `KlymonTitleScreen` replaces the vanilla title screen with an Klymon card: Singleplayer, Multiplayer, client settings, addons, **vanilla Minecraft options** and quit, plus the `[K]` identity, level and Minecraft/Fabric versions. It uses the vanilla panorama/blur background and adapts its height to small scaled resolutions.
 - `KlymonHubScreen` is the same entry point in game, bound to Right Shift, extended with the HUD editor and profiles.
+- `KlymonPlayerProfileScreen` shows the launcher progression snapshot (identity, level, points, playtime, equipped cosmetics) read from the bridge file.
+- `cosmetic.KlymonBridge` is the read-only, versioned view of `config/klymon-bridge.json` (exported by `ProgressionService` on install, launch, session end and every loadout change); `CosmeticsManager` spawns trails/auras/entrance bursts and handles the emote key (G), while `CosmeticFeatureRenderer` draws the procedural cape/wings and the item-based hats/pets on the local player only.
 - `KlymonSettingsScreen` covers the master HUD switch, global scale, accent colour and the entry points to addons, the HUD editor, profiles and diagnostics.
 - `KlymonAddonsScreen` has PvP/Performance/HUD/Visual/Utility tabs: built-in modules toggle on/off and open a generic per-addon config screen; Performance entries report the launcher-managed mods live (installed version or missing) and are never toggled from the game. It states that new addons are not installed from there (mods remain the launcher's job).
 - `KlymonAddonConfigScreen` renders every `Setting` type (toggles, steppers, cyclers, text fields, colour swatches) plus per-addon "Reset defaults" and a live crosshair preview running the addon's own draw code.

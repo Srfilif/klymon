@@ -389,3 +389,119 @@ export interface CrashDiagnosis {
   memoryMb: number;
   occurredAt: string;
 }
+
+export type CosmeticRarityModel = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary';
+export type CosmeticSlotModel =
+  | 'cape'
+  | 'wings'
+  | 'hat'
+  | 'particles'
+  | 'aura'
+  | 'trail'
+  | 'pet'
+  | 'emote'
+  | 'entrance'
+  | 'profile';
+export type QuestKindModel = 'daily' | 'weekly' | 'achievement';
+
+export interface CosmeticVisualModel {
+  kind: 'procedural' | 'texture';
+  colors: string[];
+  particle?: string;
+  shape?: string;
+  baseItem?: string;
+}
+
+export interface CosmeticModel {
+  id: string;
+  slot: CosmeticSlotModel;
+  rarity: CosmeticRarityModel;
+  name: { es: string; en: string };
+  description: { es: string; en: string };
+  price: number;
+  minLevel: number;
+  questUnlock?: string;
+  visual: CosmeticVisualModel;
+  addedIn: string;
+  owned: boolean;
+  equipped: boolean;
+  lockedReason: string | null;
+}
+
+export interface IdentityModel {
+  rankId: string;
+  rankPrefix: string;
+  rankColor: string;
+  ownedRankIds: string[];
+  titleId: string | null;
+  titleText: { es: string; en: string } | null;
+  titleColor: string | null;
+  ownedTitleIds: string[];
+  displayName: string;
+}
+
+export interface LevelProgressModel {
+  level: number;
+  lifetimePoints: number;
+  intoLevel: number;
+  neededForLevel: number;
+  fraction: number;
+}
+
+export interface ProgressionProfileModel {
+  balance: number;
+  lifetimePoints: number;
+  spentPoints: number;
+  level: LevelProgressModel;
+  playSeconds: number;
+  sessions: number;
+  daysUsed: number;
+  streakCount: number;
+  firstSeenAt: string;
+  identity: IdentityModel;
+  loadout: Record<string, string | null>;
+  inventoryCount: number;
+  integrityOk: boolean;
+  /** Local-only disclaimer: never verified, never transferable. */
+  localOnly: true;
+}
+
+export interface LedgerEntryModel {
+  id: string;
+  createdAt: string;
+  source: string;
+  delta: number;
+  balanceAfter: number;
+  detail: string | null;
+}
+
+export interface QuestStateModel {
+  id: string;
+  kind: QuestKindModel;
+  metric: string;
+  target: number;
+  points: number;
+  cosmeticId?: string;
+  name: { es: string; en: string };
+  description: { es: string; en: string };
+  windowKey: string;
+  progress: number;
+  completed: boolean;
+  claimed: boolean;
+}
+
+export interface DailyStateModel {
+  dayKey: string;
+  claimed: boolean;
+  streak: number;
+  nextReward: number;
+  canClaim: boolean;
+}
+
+export interface RewardEvent {
+  kind: 'points' | 'level-up' | 'quest' | 'daily' | 'cosmetic';
+  title: string;
+  detail: string;
+  points: number;
+  level: number | null;
+}

@@ -11,6 +11,7 @@ import com.klymon.clientmenu.config.ProfileManager;
 import com.klymon.clientmenu.hud.HudAnchor;
 import com.klymon.clientmenu.logic.ComboTracker;
 import com.klymon.clientmenu.logic.CpsTracker;
+import com.klymon.clientmenu.logic.LevelCurve;
 
 /**
  * Headless tests for the Minecraft-free core (settings, trackers, profiles,
@@ -28,6 +29,7 @@ public final class LogicTest {
         testProfileManager();
         testHudAnchor();
         testAddonState();
+        testLevelCurve();
         System.out.println("LOGIC-TEST-PASS count=" + passed);
     }
 
@@ -259,5 +261,22 @@ public final class LogicTest {
         check(!addon.flag.getBoolean() && addon.level.getInt() == 3, "addon imports leniently");
         check(addon.nameKey().equals("klymon.addon.probe"), "addon name key");
         check(addon.dependencies().contains("fabric-api"), "addon default deps");
+    }
+
+    // -------------------------------------------------------------- levelCurve
+
+    private static void testLevelCurve() {
+        check(LevelCurve.cumulativePointsForLevel(1) == 0L, "curve L1 is zero");
+        check(LevelCurve.cumulativePointsForLevel(2) == 100L, "curve L2 is 100");
+        check(LevelCurve.cumulativePointsForLevel(5) == 1000L, "curve L5 is 1000");
+        check(LevelCurve.cumulativePointsForLevel(10) == 4500L, "curve L10 is 4500");
+        check(LevelCurve.levelForPoints(0L) == 1, "level of zero is 1");
+        check(LevelCurve.levelForPoints(99L) == 1, "level below L2 floor");
+        check(LevelCurve.levelForPoints(100L) == 2, "level at L2 floor");
+        check(LevelCurve.levelForPoints(1000L) == 5, "level at L5 floor");
+        check(LevelCurve.levelForPoints(-50L) == 1, "level clamps negatives");
+        float fraction = LevelCurve.progressFraction(150L);
+        check(fraction > 0.24f && fraction < 0.26f, "fraction halfway L2 (150/200)");
+        check(LevelCurve.progressFraction(100L) == 0.0f, "fraction at floor is zero");
     }
 }

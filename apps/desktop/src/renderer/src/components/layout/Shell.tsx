@@ -13,13 +13,17 @@ import {
   Puzzle,
   Settings as SettingsIcon,
   Shirt,
+  ShoppingBag,
   Sparkles,
   Terminal,
+  Trophy,
+  User,
   Users,
   X,
 } from 'lucide-react';
 import { useApp } from '../../lib/app-context';
 import { useI18n, type TranslationKey } from '../../lib/i18n';
+import { useProgressionProfile } from '../../lib/progression';
 import { cn, formatSpeed, shortUuid } from '../../lib/utils';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
@@ -31,6 +35,9 @@ import { MusicMiniPlayer } from './MusicMiniPlayer';
 const NAV_ITEMS: { to: string; labelKey: TranslationKey; icon: typeof Play }[] = [
   { to: '/', labelKey: 'nav.home', icon: LayoutDashboard },
   { to: '/play', labelKey: 'nav.play', icon: Play },
+  { to: '/profile', labelKey: 'nav.profile', icon: User },
+  { to: '/shop', labelKey: 'nav.shop', icon: ShoppingBag },
+  { to: '/quests', labelKey: 'nav.quests', icon: Trophy },
   { to: '/versions', labelKey: 'nav.versions', icon: Layers },
   { to: '/instances', labelKey: 'nav.instances', icon: Boxes },
   { to: '/mods', labelKey: 'nav.mods', icon: Puzzle },
@@ -158,6 +165,7 @@ export function Shell(): React.JSX.Element {
             </div>
 
             <div className="flex items-center gap-1.5">
+              <BalanceChip />
               <Button variant="ghost" size="icon" onClick={() => setDownloadsOpen((value) => !value)} aria-label={t('downloads.title')}>
                 <Download className={cn('size-4', activeDownloads.length > 0 && 'text-primary')} />
               </Button>
@@ -229,6 +237,26 @@ export function Shell(): React.JSX.Element {
         ))}
       </div>
     </div>
+  );
+}
+
+function BalanceChip(): React.JSX.Element | null {
+  const { t } = useI18n();
+  const profile = useProgressionProfile();
+  if (!profile.data) return null;
+  return (
+    <NavLink
+      to="/profile"
+      className="focus-ring hidden items-center gap-1.5 rounded-md border border-border/60 bg-surface-raised/50 px-2.5 py-1.5 text-[11px] text-muted-foreground hover:text-foreground sm:flex"
+      title={t('prog.balance')}
+    >
+      <span className="font-bold text-warning">{profile.data.balance}</span>
+      <span>{t('prog.points')}</span>
+      <span className="text-muted-foreground/60">·</span>
+      <span>
+        {t('prog.level')} {profile.data.level.level}
+      </span>
+    </NavLink>
   );
 }
 

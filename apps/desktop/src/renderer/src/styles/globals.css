@@ -148,6 +148,36 @@ body::before {
   animation: shimmer 1.4s infinite linear;
 }
 
+.preview-stage .preview-mote {
+  animation: preview-float 2.6s ease-in-out infinite;
+}
+
+.preview-stage .preview-bob {
+  animation: preview-bob 2.2s ease-in-out infinite;
+}
+
+@keyframes preview-float {
+  0%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.65;
+  }
+  50% {
+    transform: translateY(-10px);
+    opacity: 1;
+  }
+}
+
+@keyframes preview-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

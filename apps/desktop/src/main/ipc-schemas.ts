@@ -148,5 +148,12 @@ export const IPC_SCHEMAS: Partial<Record<IpcChannel, z.ZodType>> = {
   'logs:tail': z.object({ limit: z.number().int().min(1).max(500).optional() }).strict(),
   'logs:open-game-log': z.object({ instanceId: zInstanceId }).strict(),
   'logs:read-game-log': z.object({ instanceId: zInstanceId }).strict(),
+
+  'progression:ledger': z.object({ limit: z.number().int().min(1).max(500).optional() }).strict(),
+  'progression:buy': z.object({ id: z.string().min(1).max(64) }).strict(),
+  'progression:equip': z.object({ id: z.string().min(1).max(64) }).strict(),
+  'progression:unequip': z.object({ slot: z.string().min(1).max(32) }).strict(),
+  'progression:claim-quest': z.object({ id: z.string().min(1).max(64) }).strict(),
+  'progression:set-title': z.object({ titleId: z.string().min(1).max(64).nullable() }).strict(),
 };
 

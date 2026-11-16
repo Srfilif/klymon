@@ -1,4 +1,5 @@
 import { app, BrowserWindow } from 'electron';
+import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import { ensureDir, LauncherLogger, LauncherPaths, readJsonFile, writeJsonAtomic } from '@klymon/core';
 import {
@@ -10,6 +11,7 @@ import {
   ContentRepository,
   InstanceRepository,
   MusicRepository,
+  ProgressionRepository,
   ServerRepository,
   SettingsRepository,
   SkinRepository,
@@ -33,6 +35,7 @@ import { GameService } from './game';
 import { ClientService, CLIENT_MOD_FILE } from './client';
 import { CrashService } from './crash';
 import { NewsService } from './news';
+import { ProgressionService } from './progression';
 
 export const APP_VERSION = '0.1.0';
 
@@ -67,6 +70,7 @@ export interface AppContext {
     backups: BackupRepository;
     music: MusicRepository;
     cache: CacheRepository;
+    progression: ProgressionRepository;
   };
   secretsAvailable: boolean;
   settings: SettingsService;
@@ -86,6 +90,7 @@ export interface AppContext {
   client: ClientService;
   crash: CrashService;
   news: NewsService;
+  progression: ProgressionService;
   versions: (options?: { includeSnapshots?: boolean; includeOld?: boolean; search?: string }) => Promise<MinecraftVersionSummary[]>;
   emit: <K extends IpcEventName>(event: K, payload: IpcEventMap[K]) => void;
 }
@@ -105,17 +110,26 @@ export async function createAppContext(options: {
   await paths.ensureAll();
 
   const db = await openDatabase(paths.databaseFile);
+  const settingsRepo = new SettingsRepository(db.db);
+  // Per-install seal secret for tamper-evident progression counters. Stored
+  // under an unknown settings key so SettingsService never reads or rewrites it.
+  let sealSecret = settingsRepo.readAll()['progression.seal.v1'];
+  if (!sealSecret) {
+    sealSecret = randomBytes(32).toString('hex');
+    settingsRepo.write({ 'progression.seal.v1': sealSecret });
+  }
   const repos = {
     accounts: new AccountRepository(db.db),
     instances: new InstanceRepository(db.db),
     content: new ContentRepository(db.db),
-    settings: new SettingsRepository(db.db),
+    settings: settingsRepo,
     activity: new ActivityRepository(db.db),
     servers: new ServerRepository(db.db),
     skins: new SkinRepository(db.db),
     backups: new BackupRepository(db.db),
     music: new MusicRepository(db.db),
     cache: new CacheRepository(db.db),
+    progression: new ProgressionRepository(db.db, () => sealSecret),
   };
 
   const secrets = new SafeSecretStore();
@@ -202,6 +216,28 @@ export async function createAppContext(options: {
   const news = new NewsService(repos.cache, logger, APP_VERSION);
   const crash = new CrashService(instances);
 
+  const progression = new ProgressionService({
+    repo: repos.progression,
+    logger,
+    displayName: () => accounts.active()?.name ?? 'Jugador',
+    resolveClientGameDir: () => {
+      const storedId = settingsService.get().clientInstanceId;
+      if (storedId) {
+        try {
+          return instances.get(storedId).gameDir;
+        } catch {
+          // Fall through to the name lookup below.
+        }
+      }
+      const found = instances.list().find((instance) => instance.name === 'Klymon Client');
+      return found?.gameDir ?? null;
+    },
+    emit: (event, payload) => {
+      if (event === 'progression:reward') broadcast('progression:reward', payload as IpcEventMap['progression:reward']);
+      else broadcast('data:changed', payload as IpcEventMap['data:changed']);
+    },
+  });
+
   const game = new GameService({
     paths,
     logger,
@@ -215,6 +251,7 @@ export async function createAppContext(options: {
     accounts,
     settings: settingsService,
     crash,
+    progression,
     launcherVersion: APP_VERSION,
     emit: (event, payload) => {
       if (event === 'launch:state') broadcast('launch:state', payload as IpcEventMap['launch:state']);
@@ -228,6 +265,7 @@ export async function createAppContext(options: {
     instances,
     content: contentManager,
     game,
+    progression,
     logger,
     // Dev builds read the resource straight from the repo; packaged builds get
     // it through electron-builder's `extraResources`.
@@ -287,6 +325,7 @@ export async function createAppContext(options: {
     client,
     crash,
     news,
+    progression,
     versions,
     emit: broadcast,
   };

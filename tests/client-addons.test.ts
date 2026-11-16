@@ -30,6 +30,7 @@ describe('Klymon Client addon system', () => {
       'PotionEffectsAddon',
       'WatermarkAddon',
       'CoordinatesAddon',
+      'LevelAddon',
       // Visual + utility
       'CustomCrosshairAddon',
       'ToggleSprintSneakAddon',
@@ -48,9 +49,16 @@ describe('Klymon Client addon system', () => {
       'ProfileManager',
       'CpsTracker',
       'ComboTracker',
+      'LevelCurve',
+      // Progression + cosmetics
+      'KlymonBridge',
+      'CosmeticsManager',
+      'CosmeticFeatureRenderer',
+      'CosmeticTextures',
       // Screens
       'KlymonHudEditorScreen',
       'KlymonProfilesScreen',
+      'KlymonPlayerProfileScreen',
       'KlymonPauseScreen',
       'KlymonAddonConfigScreen',
       'KlymonAddonsScreen',
@@ -83,6 +91,7 @@ describe('Klymon Client addon system', () => {
       'potion-effects': ['showDuration', 'showLevel', 'showIcons', 'maxShown', 'hidden', 'textColor'],
       watermark: ['showVersion', 'colorMode', 'customColor'],
       coordinates: ['showLabels', 'showFacing', 'textColor'],
+      'level-progress': ['showPoints', 'showBar'],
       'custom-crosshair': ['preset', 'size', 'gap', 'thickness', 'dot', 'color', 'outline', 'outlineColor'],
       'toggle-sprint-sneak': ['sprintEnabled', 'sneakEnabled', 'showIndicators', 'requireForward', 'disableWhileFlying', 'indicatorColor'],
       fullbright: [],
@@ -148,7 +157,7 @@ describe('Klymon Client addon system', () => {
   it('versions the mod metadata for the addon release', () => {
     const entries = jarEntries();
     const metadata = JSON.parse(new TextDecoder().decode(entries['fabric.mod.json']));
-    expect(metadata.version).toBe('1.2.0');
+    expect(metadata.version).toBe('1.3.0');
     const source = JSON.parse(readFileSync(join(clientModDir, 'src', 'main', 'resources', 'fabric.mod.json'), 'utf8'));
     expect(source.version).toBe(metadata.version);
   });
@@ -191,6 +200,7 @@ describe('Klymon Client addon logic (headless Java)', () => {
       'src/main/java/com/klymon/clientmenu/hud/HudAnchor.java',
       'src/main/java/com/klymon/clientmenu/logic/CpsTracker.java',
       'src/main/java/com/klymon/clientmenu/logic/ComboTracker.java',
+      'src/main/java/com/klymon/clientmenu/logic/LevelCurve.java',
       'src/main/java/com/klymon/clientmenu/config/ProfileDocument.java',
       'src/main/java/com/klymon/clientmenu/config/ProfileManager.java',
       'src/test/java/com/klymon/clientmenu/LogicTest.java',

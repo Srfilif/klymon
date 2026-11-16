@@ -17,6 +17,7 @@
     "@klymon/modloader-manager": "workspace:*",
     "@klymon/music-manager": "workspace:*",
     "@klymon/performance-manager": "workspace:*",
+    "@klymon/progression": "workspace:*",
     "@klymon/shared-types": "workspace:*",
     "@klymon/skin-manager": "workspace:*",
     "@klymon/version-manager": "workspace:*",

@@ -1,6 +1,7 @@
 {
   "key.categories.klymon": "Klymon Client",
   "key.klymon.menu": "Open Klymon menu",
+  "key.klymon.emote": "Play equipped emote",
 
   "klymon.title.title": "Klymon Client",
   "klymon.title.client": "CLIENT",
@@ -268,5 +269,25 @@
   "klymon.accent.gold": "Gold",
 
   "klymon.state.on": "On",
-  "klymon.state.off": "Off"
+  "klymon.state.off": "Off",
+
+  "klymon.level.short": "Lvl",
+  "klymon.settings.playerProfile": "My Klymon profile",
+  "klymon.addon.level-progress": "Level Progress",
+  "klymon.addon.level-progress.desc": "Klymon level, points balance and progress to the next level.",
+  "klymon.setting.level-progress.showPoints": "Show points",
+  "klymon.setting.level-progress.showBar": "Show bar",
+  "klymon.cosmetics.emote": "Emote: %s",
+  "klymon.profile.title": "Klymon Profile",
+  "klymon.profile.subtitle": "Local progression on this machine",
+  "klymon.profile.player": "Player",
+  "klymon.profile.rank": "Rank",
+  "klymon.profile.playerTitle": "Title",
+  "klymon.profile.level": "Level",
+  "klymon.profile.points": "Points (lifetime)",
+  "klymon.profile.playtime": "Playtime",
+  "klymon.profile.sessions": "Sessions",
+  "klymon.profile.cosmetics": "Equipped cosmetics",
+  "klymon.profile.synced": "Synced with the launcher",
+  "klymon.profile.local": "Launcher has not exported progression yet"
 }

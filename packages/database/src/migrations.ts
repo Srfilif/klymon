@@ -65,6 +65,40 @@ export const MIGRATIONS: Migration[] = [
       );
     `,
   },
+  {
+    id: '0002_progression',
+    sql: `
+      CREATE TABLE IF NOT EXISTS progression_profile (
+        id TEXT PRIMARY KEY, lifetime_points INTEGER NOT NULL DEFAULT 0,
+        spent_points INTEGER NOT NULL DEFAULT 0, play_seconds INTEGER NOT NULL DEFAULT 0,
+        sessions INTEGER NOT NULL DEFAULT 0, days_json TEXT NOT NULL DEFAULT '[]',
+        streak_count INTEGER NOT NULL DEFAULT 0, streak_last_day TEXT,
+        first_seen_at TEXT NOT NULL, identity_json TEXT NOT NULL DEFAULT '{}',
+        seal TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS points_ledger (
+        id TEXT PRIMARY KEY, created_at TEXT NOT NULL, day_key TEXT NOT NULL,
+        source TEXT NOT NULL, delta INTEGER NOT NULL, balance_after INTEGER NOT NULL,
+        detail TEXT
+      );
+      CREATE INDEX IF NOT EXISTS ledger_day_idx ON points_ledger (day_key);
+      CREATE TABLE IF NOT EXISTS cosmetics_inventory (
+        cosmetic_id TEXT PRIMARY KEY, acquired_at TEXT NOT NULL, source TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS cosmetic_loadout (
+        slot TEXT PRIMARY KEY, cosmetic_id TEXT
+      );
+      CREATE TABLE IF NOT EXISTS quest_progress (
+        quest_id TEXT NOT NULL, window_key TEXT NOT NULL, progress INTEGER NOT NULL DEFAULT 0,
+        completed INTEGER NOT NULL DEFAULT 0, completed_at TEXT, claimed INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (quest_id, window_key)
+      );
+      CREATE TABLE IF NOT EXISTS daily_claims (
+        day_key TEXT PRIMARY KEY, streak INTEGER NOT NULL, points INTEGER NOT NULL,
+        claimed_at TEXT NOT NULL
+      );
+    `,
+  },
 ];
 
 export function runMigrations(sqlite: Database.Database): void {

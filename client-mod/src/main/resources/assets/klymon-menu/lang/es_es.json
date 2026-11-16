@@ -1,6 +1,7 @@
 {
   "key.categories.klymon": "Klymon Client",
   "key.klymon.menu": "Abrir menú de Klymon",
+  "key.klymon.emote": "Usar emote equipado",
 
   "klymon.title.title": "Klymon Client",
   "klymon.title.client": "CLIENT",
@@ -268,5 +269,25 @@
   "klymon.accent.gold": "Dorado",
 
   "klymon.state.on": "Sí",
-  "klymon.state.off": "No"
+  "klymon.state.off": "No",
+
+  "klymon.level.short": "Nv.",
+  "klymon.settings.playerProfile": "Mi perfil de Klymon",
+  "klymon.addon.level-progress": "Progreso de nivel",
+  "klymon.addon.level-progress.desc": "Nivel de Klymon, saldo de puntos y progreso al siguiente nivel.",
+  "klymon.setting.level-progress.showPoints": "Mostrar puntos",
+  "klymon.setting.level-progress.showBar": "Mostrar barra",
+  "klymon.cosmetics.emote": "Emote: %s",
+  "klymon.profile.title": "Perfil de Klymon",
+  "klymon.profile.subtitle": "Progresión local de este equipo",
+  "klymon.profile.player": "Jugador",
+  "klymon.profile.rank": "Rango",
+  "klymon.profile.playerTitle": "Título",
+  "klymon.profile.level": "Nivel",
+  "klymon.profile.points": "Puntos (totales)",
+  "klymon.profile.playtime": "Tiempo jugado",
+  "klymon.profile.sessions": "Sesiones",
+  "klymon.profile.cosmetics": "Cosméticos equipados",
+  "klymon.profile.synced": "Sincronizado con el launcher",
+  "klymon.profile.local": "El launcher aún no exportó la progresión"
 }

@@ -41,6 +41,7 @@ public final class AddonManager {
         manager.register(new PotionEffectsAddon());
         manager.register(new WatermarkAddon());
         manager.register(new CoordinatesAddon());
+        manager.register(new LevelAddon());
         // Visual
         manager.register(new CustomCrosshairAddon());
         // Utility

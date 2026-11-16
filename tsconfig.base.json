@@ -31,7 +31,8 @@
       "@klymon/skin-manager": ["packages/skin-manager/src/index.ts"],
       "@klymon/skin-manager/paper-doll": ["packages/skin-manager/src/paper-doll.ts"],
       "@klymon/performance-manager": ["packages/performance-manager/src/index.ts"],
-      "@klymon/music-manager": ["packages/music-manager/src/index.ts"]
+      "@klymon/music-manager": ["packages/music-manager/src/index.ts"],
+      "@klymon/progression": ["packages/progression/src/index.ts"]
     }
   }
 }

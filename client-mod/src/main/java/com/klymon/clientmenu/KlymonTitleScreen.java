@@ -1,5 +1,7 @@
 package com.klymon.clientmenu;
 
+import com.klymon.clientmenu.cosmetic.KlymonBridge;
+
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.screen.multiplayer.MultiplayerScreen;
@@ -124,7 +126,9 @@ public final class KlymonTitleScreen extends Screen {
                 KlymonTheme.alpha(KlymonTheme.accent(), 0x50));
 
         int footerY = this.panelY + this.panelHeight - (this.compactFooter ? 16 : 34);
-        String username = this.client != null ? this.client.getSession().getUsername() : "?";
+        String sessionName = this.client != null ? this.client.getSession().getUsername() : "?";
+        KlymonBridge identity = KlymonBridge.get();
+        String username = identity.displayName(sessionName);
         if (this.compactFooter) {
             context.drawTextWithShadow(this.textRenderer,
                     Text.translatable("klymon.title.footerCompact", username,
@@ -132,7 +136,8 @@ public final class KlymonTitleScreen extends Screen {
                     this.panelX + 22, footerY, KlymonTheme.alpha(KlymonTheme.MUTED, 0xC0));
         } else {
             KlymonTheme.labeledValue(context, this.textRenderer, Text.translatable("klymon.title.session").getString(),
-                    username, this.panelX + 22, footerY, this.panelWidth - 44);
+                    username + "  ·  " + Text.translatable("klymon.level.short").getString() + " " + identity.level(),
+                    this.panelX + 22, footerY, this.panelWidth - 44);
             context.drawTextWithShadow(this.textRenderer,
                     Text.translatable("klymon.title.footer", KlymonMenuClient.gameVersion(), KlymonMenuClient.loaderVersion()),
                     this.panelX + 22, footerY + 12, KlymonTheme.alpha(KlymonTheme.MUTED, 0xB0));

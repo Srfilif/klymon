@@ -17,6 +17,7 @@ const workspacePackages = [
   '@klymon/skin-manager',
   '@klymon/performance-manager',
   '@klymon/music-manager',
+  '@klymon/progression',
 ];
 
 const aliases = [

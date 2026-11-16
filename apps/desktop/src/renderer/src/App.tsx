@@ -6,6 +6,9 @@ import { Shell } from './components/layout/Shell';
 import { Spinner } from './components/ui/misc';
 import { HomePage } from './pages/HomePage';
 import { PlayPage } from './pages/PlayPage';
+import { ProfilePage } from './pages/ProfilePage';
+import { ShopPage } from './pages/ShopPage';
+import { QuestsPage } from './pages/QuestsPage';
 import { VersionsPage } from './pages/VersionsPage';
 import { InstancesPage } from './pages/InstancesPage';
 import { ModsPage, ModpacksPage, ResourcePacksPage, ShadersPage } from './pages/ContentPages';
@@ -38,6 +41,9 @@ function Gate(): React.JSX.Element {
         <Route element={<Shell />}>
           <Route index element={<HomePage />} />
           <Route path="play" element={<PlayPage />} />
+          <Route path="profile" element={<ProfilePage />} />
+          <Route path="shop" element={<ShopPage />} />
+          <Route path="quests" element={<QuestsPage />} />
           <Route path="versions" element={<VersionsPage />} />
           <Route path="instances" element={<InstancesPage />} />
           <Route path="mods" element={<ModsPage />} />
