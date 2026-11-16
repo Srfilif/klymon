@@ -124,6 +124,10 @@ file degrades to prefix `[K]`, level 1, no cosmetics.
   bridge ids and plays the equipped emote flourish on `G`.
 - Everything is local-player only: other players would need the same bridge
   file, which only a future server could distribute.
+- `cosmetic.SessionHeartbeat` closes the loop game → launcher: it accumulates
+  in-world seconds (`logic.SessionAccumulator`, menus excluded) and writes
+  `config/klymon-session.json` every 10 s plus on world unload, so the
+  launcher accrues live playtime instead of waiting for exit.
 
 ## Known limitations
 

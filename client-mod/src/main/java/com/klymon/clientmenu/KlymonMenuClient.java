@@ -3,6 +3,7 @@ package com.klymon.clientmenu;
 import com.klymon.clientmenu.addon.Addon;
 import com.klymon.clientmenu.addon.BlockOverlayAddon;
 import com.klymon.clientmenu.cosmetic.CosmeticsManager;
+import com.klymon.clientmenu.cosmetic.SessionHeartbeat;
 
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
@@ -53,7 +54,8 @@ public final class KlymonMenuClient implements ClientModInitializer {
         LOGGER.info("Klymon Client {} settings loaded from {}", modVersion(), KlymonConfig.file());
         LOGGER.info("Klymon Client addons registered: {}", config.addons().all().size());
         CosmeticsManager.init();
-        LOGGER.info("Klymon Client cosmetics ready (bridge, feature renderer, emote key)");
+        SessionHeartbeat.init();
+        LOGGER.info("Klymon Client cosmetics ready (bridge, feature renderer, emote key, session heartbeat)");
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             replaceTitleScreen(client);

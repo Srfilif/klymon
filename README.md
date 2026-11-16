@@ -55,7 +55,7 @@ pnpm package:linux    # AppImage, deb, rpm (must run on Linux)
 pnpm package:mac      # dmg x64 + arm64 (must run on macOS)
 ```
 
-Builds are unsigned. Windows SmartScreen and macOS Gatekeeper will warn until you configure code signing (`CSC_LINK`/`CSC_KEY_PASSWORD`, `APPLE_ID`, …).
+Builds are unsigned. Windows SmartScreen and macOS Gatekeeper will warn until you configure code signing (`CSC_LINK`/`CSC_KEY_PASSWORD`, `APPLE_ID`, …). Pushing a `v*` tag automates all of this through GitHub Actions (see [CONTRIBUTING.md](CONTRIBUTING.md) § Releases).
 
 ## Where data lives
 

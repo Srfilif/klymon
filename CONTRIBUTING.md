@@ -47,6 +47,22 @@ Guidelines:
 - Tests must not require credentials. Anything needing an account is documented as manual.
 - Don't weaken assertions to make a failing test pass — fix the cause.
 
+## Releases
+
+Releases are automated with GitHub Actions ([release.yml](.github/workflows/release.yml)):
+
+1. Bump `version` in `apps/desktop/package.json` (artifact names come from there) and update [CHANGELOG.md](CHANGELOG.md). Commit to `main`.
+2. Tag and push: `git tag vX.Y.Z && git push origin vX.Y.Z` (keep the tag in sync with the bumped version).
+3. The workflow runs typecheck + tests + bundles on Windows, Linux and macOS, packages each platform, and uploads everything into a **draft** release named after the tag.
+4. Review the draft on GitHub (notes are auto-generated, edit them if needed) and click **Publish**.
+
+Notes:
+
+- Every push to `main` and every PR runs the lighter [ci.yml](.github/workflows/ci.yml) gates (typecheck, tests, bundles).
+- `workflow_dispatch` on the release workflow dry-runs the builds without publishing anything.
+- Builds are unsigned: Windows SmartScreen and macOS Gatekeeper will warn. To sign, add the standard electron-builder secrets (`CSC_LINK`/`CSC_KEY_PASSWORD`, plus Apple notarization credentials) as repository secrets — no workflow change needed.
+- To publish releases without the manual review step, change the `gh release create --draft` flag in `release.yml` (not recommended until the pipeline has proven itself).
+
 ## Pull requests
 
 - One focused change per PR, with a clear motivation.

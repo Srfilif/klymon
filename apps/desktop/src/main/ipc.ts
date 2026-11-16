@@ -535,4 +535,5 @@ export function registerIpcHandlers(context: AppContext, updater: UpdaterService
   handle('progression:daily', () => context.progression.daily());
   handle('progression:claim-daily', () => context.progression.claimDaily());
   handle('progression:set-title', ({ titleId }) => context.progression.setTitle(titleId));
+  handle('progression:session', () => context.game.liveSession());
 }

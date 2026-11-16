@@ -505,3 +505,11 @@ export interface RewardEvent {
   points: number;
   level: number | null;
 }
+
+export interface LiveSessionModel {
+  running: boolean;
+  instanceId: string | null;
+  instanceName: string | null;
+  elapsedSeconds: number;
+  source: 'heartbeat' | 'wall-clock' | 'none';
+}

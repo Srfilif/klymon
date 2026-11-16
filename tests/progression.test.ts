@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { openDatabase, ProgressionRepository, type DatabaseHandle } from '@klymon/database';
 import { LauncherLogger } from '@klymon/core';
-import { ProgressionService } from '../apps/desktop/src/main/services/progression';
+import { ProgressionService, readHeartbeat, resolveSessionElapsed } from '../apps/desktop/src/main/services/progression';
 import {
   ACHIEVEMENTS,
   COSMETIC_CATALOG,
@@ -232,6 +232,112 @@ describe('progression service', () => {
     expect(claimed.daily.streak).toBe(1);
     expect(claimed.profile.balance).toBe(20);
     expect(() => service.claimDaily()).toThrow(/already claimed/);
+  });
+
+  it('accrues playtime incrementally under one shared daily cap', async () => {
+    handle = await createDatabase();
+    const gameDir = mkdtempSync(join(tmpdir(), 'klymon-game-'));
+    const { service } = createService(handle, gameDir);
+
+    const first = service.accruePlaytime(120);
+    expect(first.minutesCommitted).toBe(2);
+    expect(first.points).toBe(4);
+    // Partial minutes commit seconds but award nothing until the minute completes.
+    const partial = service.accruePlaytime(30);
+    expect(partial.minutesCommitted).toBe(0);
+    expect(partial.points).toBe(0);
+    expect(service.profile().playSeconds).toBe(150);
+
+    // A huge accrual is still bound by the daily points ceiling.
+    service.accruePlaytime(12 * 3600);
+    const profile = service.profile();
+    expect(profile.playSeconds).toBe(150 + 12 * 3600);
+    expect(profile.lifetimePoints).toBeLessThanOrEqual(1500);
+  });
+
+  it('finishes a live session without double-counting accrued minutes', async () => {
+    handle = await createDatabase();
+    const gameDir = mkdtempSync(join(tmpdir(), 'klymon-game-'));
+    const { service } = createService(handle, gameDir);
+
+    const acc = service.accruePlaytime(3600);
+    expect(acc.minutesCommitted).toBe(60);
+    const done = service.finishSession({ instanceName: 'Klymon Client', totalSeconds: 3661, questMinutes: 1 });
+    // Bonuses only: first-session 15 + completion 25.
+    expect(done.points).toBe(40);
+    expect(done.completed).toBe(true);
+    expect(done.questsCompleted).toContain('ach-hour-session');
+    const profile = service.profile();
+    expect(profile.sessions).toBe(1);
+    expect(profile.playSeconds).toBe(3600);
+    // 120 playtime + 40 bonuses.
+    expect(profile.balance).toBe(160);
+
+    // Windowed quests advanced exactly the 61 live minutes, not twice.
+    const quests = service.quests();
+    const playQuest = [...quests.daily, ...quests.weekly].find((quest) => quest.metric === 'play_minutes');
+    if (playQuest) expect(playQuest.progress).toBeLessThanOrEqual(61);
+  });
+
+  it('reconciles heartbeat time against the wall clock', () => {
+    const now = 1_800_000_000_000;
+    const wallStartMs = now - 120_000;
+    // Fresh heartbeat on a new run: elapsed counts from zero for that run.
+    const first = resolveSessionElapsed({
+      nowMs: now,
+      wallStartMs,
+      heartbeat: { runId: 'run-a', updatedAtMs: now - 1000, totalInWorldSeconds: 90 },
+      baseline: null,
+    });
+    expect(first).toEqual({ elapsedSeconds: 90, source: 'heartbeat', baseline: { runId: 'run-a', total: 0 } });
+    // Same run later: elapsed follows the heartbeat counter.
+    const second = resolveSessionElapsed({
+      nowMs: now + 30_000,
+      wallStartMs,
+      heartbeat: { runId: 'run-a', updatedAtMs: now + 29_000, totalInWorldSeconds: 115 },
+      baseline: first.baseline,
+    });
+    expect(second.elapsedSeconds).toBe(115);
+    expect(second.source).toBe('heartbeat');
+    // A new run id re-baselines instead of jumping backwards.
+    const third = resolveSessionElapsed({
+      nowMs: now + 60_000,
+      wallStartMs,
+      heartbeat: { runId: 'run-b', updatedAtMs: now + 59_000, totalInWorldSeconds: 5 },
+      baseline: second.baseline,
+    });
+    expect(third).toEqual({ elapsedSeconds: 5, source: 'heartbeat', baseline: { runId: 'run-b', total: 0 } });
+    // Stale or missing heartbeats fall back to the wall clock.
+    const stale = resolveSessionElapsed({
+      nowMs: now,
+      wallStartMs,
+      heartbeat: { runId: 'run-a', updatedAtMs: now - 120_000, totalInWorldSeconds: 5 },
+      baseline: first.baseline,
+    });
+    expect(stale.source).toBe('wall-clock');
+    expect(stale.elapsedSeconds).toBe(120);
+    expect(stale.baseline).toEqual(first.baseline);
+    const missing = resolveSessionElapsed({ nowMs: now, wallStartMs, heartbeat: null, baseline: null });
+    expect(missing.source).toBe('wall-clock');
+    expect(missing.elapsedSeconds).toBe(120);
+  });
+
+  it('reads the mod heartbeat tolerantly', async () => {
+    const gameDir = mkdtempSync(join(tmpdir(), 'klymon-game-'));
+    expect(readHeartbeat(gameDir)).toBeNull();
+    const { mkdirSync, writeFileSync } = await import('node:fs');
+    mkdirSync(join(gameDir, 'config'), { recursive: true });
+    const file = join(gameDir, 'config', 'klymon-session.json');
+    writeFileSync(file, 'not json{{{');
+    expect(readHeartbeat(gameDir)).toBeNull();
+    writeFileSync(file, JSON.stringify({ version: 2, runId: 'x', updatedAtMs: 1, totalInWorldSeconds: 1 }));
+    expect(readHeartbeat(gameDir)).toBeNull();
+    writeFileSync(file, JSON.stringify({ version: 1, runId: '', updatedAtMs: 1, totalInWorldSeconds: 1 }));
+    expect(readHeartbeat(gameDir)).toBeNull();
+    writeFileSync(file, JSON.stringify({ version: 1, runId: 'run-a', updatedAtMs: 1_800_000_000_000, totalInWorldSeconds: -4 }));
+    expect(readHeartbeat(gameDir)).toBeNull();
+    writeFileSync(file, JSON.stringify({ version: 1, runId: 'run-a', updatedAtMs: 1_800_000_000_000, totalInWorldSeconds: 42 }));
+    expect(readHeartbeat(gameDir)).toEqual({ runId: 'run-a', updatedAtMs: 1_800_000_000_000, totalInWorldSeconds: 42 });
   });
 
   it('unlocks titles by level and persists the choice', async () => {

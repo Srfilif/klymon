@@ -55,7 +55,11 @@ mac:
       arch: [x64, arm64]
   artifactName: ${productName}-${version}-${os}-${arch}.${ext}
   hardenedRuntime: true
+# Release uploads target GitHub Releases (see .github/workflows/release.yml).
+# The in-app updater is unaffected: UpdaterService always overrides the feed
+# with the manual generic URL from Settings, and stays disabled until set.
 publish:
-  provider: generic
-  url: https://updates.example.com/klymon
-  channel: latest
+  provider: github
+  owner: Srfilif
+  repo: klymon
+  releaseType: draft

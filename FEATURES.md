@@ -62,7 +62,8 @@ Legend: **✅** implemented and covered by automated tests · **🔵** implement
 | Feature | Status | Notes |
 | --- | --- | --- |
 | `[K]` identity | ✅ | Automatic prefix on every Klymon surface (launcher header, title/hub/profile screens, HUD); rank/title system ready for future ranks; the Minecraft account name is never mutated. Server-controlled nametags cannot be changed from the client. |
-| Points economy | ✅ | Playtime (2/min), session bonus (25), first-session bonus (15), quest/daily rewards; daily play cap (360 min) and daily points cap (1500); append-only ledger with balance. |
+| Points economy | ✅ | Playtime (2/min), session bonus (25), first-session bonus (15), quest/daily rewards; daily play cap (360 min) and daily points cap (1500); append-only ledger with balance; accrued live every 30 s while playing. |
+| Live session sync | ✅ | Mod heartbeat (`klymon-session.json`, in-world seconds) reconciled with the wall clock; playtime, points, quests and the in-game bridge update live in both directions; `progression:session` feeds the live session card. |
 | Levels | ✅ | Shared TS/Java curve (`50·L·(L−1)`); progress bar, level-up toasts, in-game level HUD addon. |
 | Daily rewards | ✅ | 7-day streak ladder with clock-skew protection; claimable from the Quests page. |
 | Quests & achievements | ✅ | 3 rotating dailies + 3 rotating weeklies (deterministic per date) and 13 permanent achievements, with progress tracking and a claim flow; quest completions can grant cosmetics. |
@@ -112,7 +113,7 @@ Legend: **✅** implemented and covered by automated tests · **🔵** implement
 
 | Item | Status | Notes |
 | --- | --- | --- |
-| Unit/integration tests (Vitest) | ✅ | 15 files, 100 tests: offline UUID, path safety, launch args, Java parsing, crash analysis, skin PNG, database repositories/migrations, download manager, Fabric library resolution, branding pack generation, Klymon Client profile, shipped mod jar, client UI classes and es/en dictionary parity, plus the progression suite (economy, catalog/quest validation, seal integrity, shop/quest/daily service flows). |
+| Unit/integration tests (Vitest) | ✅ | 15 files, 104 tests: offline UUID, path safety, launch args, Java parsing, crash analysis, skin PNG, database repositories/migrations, download manager, Fabric library resolution, branding pack generation, Klymon Client profile, shipped mod jar, client UI classes and es/en dictionary parity, plus the progression suite (economy, catalog/quest validation, seal integrity, shop/quest/daily service flows, incremental accrual, heartbeat reconciliation). |
 | Live install E2E | ✅ | `tests/e2e-install.test.ts` — real 1.5.2 and Fabric 1.21.1 downloads. |
 | Live launch E2E | ✅ | `tests/e2e-launch.test.ts` — boots Minecraft 1.5.2. |
 | Klymon Client end-to-end verification | ✅ | `scripts/verify-client.mjs` drives the built app over CDP: runs `client:install` through IPC, asserts the menu jar and retired-slug pruning, launches the real game and requires fresh log lines (Fabric loader, `klymon-menu`, LWJGL backend, title-screen attach) with no renderer console errors. |

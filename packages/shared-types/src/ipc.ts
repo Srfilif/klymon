@@ -17,6 +17,7 @@ import type {
   JvmPreset,
   LaunchState,
   LedgerEntryModel,
+  LiveSessionModel,
   LoaderType,
   LoaderVersionOption,
   LogLine,
@@ -154,6 +155,7 @@ export const IPC_CHANNELS = [
   'progression:daily',
   'progression:claim-daily',
   'progression:set-title',
+  'progression:session',
 ] as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[number];
@@ -321,6 +323,7 @@ export interface IpcContract {
   'progression:daily': { req: void; res: DailyStateModel };
   'progression:claim-daily': { req: void; res: { profile: ProgressionProfileModel; daily: DailyStateModel } };
   'progression:set-title': { req: { titleId: string | null }; res: ProgressionProfileModel };
+  'progression:session': { req: void; res: LiveSessionModel };
 }
 
 export interface InstallProgressEvent {

@@ -55,6 +55,8 @@ describe('Klymon Client addon system', () => {
       'CosmeticsManager',
       'CosmeticFeatureRenderer',
       'CosmeticTextures',
+      'SessionHeartbeat',
+      'SessionAccumulator',
       // Screens
       'KlymonHudEditorScreen',
       'KlymonProfilesScreen',
@@ -201,6 +203,7 @@ describe('Klymon Client addon logic (headless Java)', () => {
       'src/main/java/com/klymon/clientmenu/logic/CpsTracker.java',
       'src/main/java/com/klymon/clientmenu/logic/ComboTracker.java',
       'src/main/java/com/klymon/clientmenu/logic/LevelCurve.java',
+      'src/main/java/com/klymon/clientmenu/logic/SessionAccumulator.java',
       'src/main/java/com/klymon/clientmenu/config/ProfileDocument.java',
       'src/main/java/com/klymon/clientmenu/config/ProfileManager.java',
       'src/test/java/com/klymon/clientmenu/LogicTest.java',

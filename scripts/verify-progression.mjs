@@ -126,6 +126,9 @@ try {
   const ledger = await invoke('progression:ledger', { limit: 10 });
   assert(Array.isArray(ledger) && ledger.length >= 2, `ledger records movements (${ledger?.length})`);
 
+  const session = await invoke('progression:session');
+  assert(session?.running === false && session?.source === 'none', 'no live session while idle');
+
   assert(errors.length === 0, 'no renderer exceptions during verification');
   socket.close();
 } catch (error) {

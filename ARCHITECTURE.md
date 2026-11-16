@@ -10,7 +10,7 @@ Klymon Launcher is a pnpm monorepo: one Electron application plus fourteen focus
                                                 │ contextBridge (preload, sandboxed)
 ┌───────────────────────────────────────────────▼──────────────────────────────────────────────────────────┐
 │ main process                                                                                             │
-│  ipc.ts (98 channels, zod validation, sender check)  security.ts (CSP, navigation, permissions)          │
+│  ipc.ts (99 channels, zod validation, sender check)  security.ts (CSP, navigation, permissions)          │
 │  services/  context · game · client · accounts · settings · secrets · news · updater · crash · progression │
 │  protocols.ts  app://bundle · klymon-media://data · klymon-music://music                                 │
 ├──────────────────────────────────────────────────────────────────────────────────────────────────────────┤
@@ -54,7 +54,7 @@ Packages contain no UI and no Electron API calls where avoidable; `better-sqlite
 
 ## IPC
 
-- 98 channels of the form `domain:action` (`versions:list`, `content:install`, `progression:buy`, …).
+- 99 channels of the form `domain:action` (`versions:list`, `content:install`, `progression:buy`, …).
 - Every payload is validated with a zod schema (`apps/desktop/src/main/ipc-schemas.ts`) before it reaches a service.
 - Handlers verify `event.senderFrame`/origin and reject invocations that do not come from the bundled renderer.
 - Errors are serialised to a stable shape (`code`, `message`, `details`) and rethrown in the renderer as `LauncherError`.
@@ -86,6 +86,16 @@ Production responses carry a CSP header (`security.ts`): scripts only from the a
 3. Build the classpath from the (possibly modloader-merged) version profile and evaluate the argument templates with feature rules (`has_custom_resolution`, `is_demo_user`, …).
 4. Spawn Java with `cwd` set to the instance game directory, stream stdout/stderr to the console drawer, and track lifecycle (`idle → launching → running → exited`).
 5. On exit, record activity in the database and emit the final state to the UI. A non-zero exit triggers `CrashService`: it reads the newest crash report from `<gameDir>/crash-reports` (or a fresh `latest.log`), and broadcasts a structured diagnosis (`game:crash`) that the UI renders with hints and repair actions.
+
+## Live session sync
+
+While the game runs, `GameService` keeps a tracked session and syncs every 30 s instead of waiting for exit:
+
+1. The mod writes `config/klymon-session.json` every 10 s with its run id and accumulated in-world seconds (`SessionHeartbeat`; menus and loading screens never count).
+2. The launcher reads the heartbeat (`readHeartbeat`, tolerant to missing/corrupt/unknown versions) and reconciles it against the wall clock (`resolveSessionElapsed`): a fresh heartbeat wins, otherwise the wall clock is used, and a new run id re-baselines instead of jumping backwards.
+3. Newly elapsed seconds are committed incrementally (`accruePlaytime`: playtime, per-minute points under the shared daily caps, live quest progress) with per-tick clamps so a time-source switch cannot invent hours.
+4. The bridge is re-exported to both the running instance and the Klymon Client instance, so the in-game profile/HUD update live; `data:changed` refreshes the launcher UI, and `progression:session` exposes the live elapsed time.
+5. On exit the remainder is accrued and `finishSession` closes the session (counters, first-session/completion bonuses, final quest pass). Incremental commits also make playtime crash-safe up to the last tick.
 
 Legacy `minecraftArguments` strings, modern `arguments.game/arguments.jvm` arrays, and plain-string entries inside those arrays are all supported (each was a real bug found by the live tests).
 

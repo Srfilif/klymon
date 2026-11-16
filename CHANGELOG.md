@@ -16,6 +16,7 @@ All notable changes are documented here. Format follows [Keep a Changelog](https
 - Cosmetics shop and inventory (28 items across cape/wings/hat/particles/aura/trail/pet/emote/entrance/profile, five rarities), equip/unequip loadout, daily streak rewards, rotating daily/weekly quests and permanent achievements with claim flow.
 - Player profile page (identity, level, stats, loadout, points history), quests page, shop page, header balance chip and reward toasts; Spanish/English strings throughout.
 - `klymon-menu` 1.3.0: `[K]` identity on every Klymon surface, in-game player profile screen, level-progress HUD addon, and real client-side cosmetics (procedural cape/wings, item hats/pets, particle trails/auras, entrance bursts, emote keybind).
+- Automated releases: pushing a `v*` tag runs typecheck, tests and packaging on Windows/Linux/macOS and uploads the installers to a draft GitHub release; every push/PR runs the lighter CI gates.
 
 ### Changed
 
@@ -23,6 +24,7 @@ All notable changes are documented here. Format follows [Keep a Changelog](https
 
 ### Fixed
 
+- Live playtime sync: the launcher used to record sessions only on game exit and the mod read a bridge frozen at launch, so playtime never updated while playing. Sessions now accrue every 30 s from the mod heartbeat (`klymon-session.json`, reconciled with the wall clock), refreshing points, quests, the launcher UI and the in-game bridge in both directions; the profile shows a live session card.
 - 3D skin preview for local skins: `klymon-media://` responses now carry `Access-Control-Allow-Origin: *` and the scheme is CORS-enabled, so skinview3d's CORS texture loads (required for WebGL upload) succeed instead of failing silently. Texture load failures now warn in the console.
 - Recovered all `packages/*` sources (lost during the monorepo move to `C:\Dev\Mc`) from the production bundles, tests and docs; full suite green (87 passed).
 

@@ -11,7 +11,13 @@ import type { LaunchPhase, LaunchState, LoaderType, VersionInstallResult } from 
 import type { SettingsService } from './settings';
 import type { AccountService } from './accounts';
 import type { CrashService } from './crash';
-import type { ProgressionService } from './progression';
+import {
+  readHeartbeat,
+  resolveSessionElapsed,
+  type HeartbeatBaseline,
+  type ProgressionService,
+  type SessionTimeSource,
+} from './progression';
 
 export interface GameServiceDeps {
   paths: LauncherPaths;
@@ -31,6 +37,31 @@ export interface GameServiceDeps {
   emit: (event: 'launch:state' | 'game:log' | 'game:crash', payload: unknown) => void;
 }
 
+export interface LiveSessionState {
+  running: boolean;
+  instanceId: string | null;
+  instanceName: string | null;
+  elapsedSeconds: number;
+  source: SessionTimeSource | 'none';
+}
+
+interface TrackedSession {
+  instanceId: string;
+  instanceName: string;
+  gameDir: string;
+  wallStartMs: number;
+  committedSeconds: number;
+  pendingRemainder: number;
+  advancedQuestMinutes: number;
+  baseline: HeartbeatBaseline | null;
+  timer: NodeJS.Timeout | null;
+}
+
+/** Live sync cadence while the game runs: accrue, quest progress, bridge export. */
+const SYNC_TICK_MS = 30_000;
+/** Absurd durations are ignored rather than committed. */
+const MAX_TRACKED_SECONDS = 12 * 3600;
+
 export class GameService {
   private state: LaunchState = {
     instanceId: null,
@@ -43,6 +74,7 @@ export class GameService {
   };
   private child: import('node:child_process').ChildProcess | null = null;
   private startedAt: number | null = null;
+  private session: TrackedSession | null = null;
 
   constructor(private readonly deps: GameServiceDeps) {}
 
@@ -227,16 +259,7 @@ export class GameService {
           this.deps.emit('game:log', { instanceId, line });
         },
         onExit: (code) => {
-          const seconds = this.startedAt ? (Date.now() - this.startedAt) / 1000 : 0;
-          try {
-            this.deps.progression?.onSessionEnd({ seconds, instanceName: refreshed.name });
-            void this.deps.progression?.exportBridge();
-          } catch (error) {
-            this.deps.logger.warn(
-              'progression',
-              `Session rewards failed: ${error instanceof Error ? error.message : String(error)}`,
-            );
-          }
+          const seconds = this.stopSession();
           this.deps.instances.recordLaunch(instanceId, seconds);
           this.deps.instanceRepo.update(instanceId, { lastPlayedAt: new Date().toISOString() });
           this.deps.activity.add({
@@ -274,6 +297,7 @@ export class GameService {
 
     this.child = process;
     this.startedAt = Date.now();
+    this.startSession(instanceId, refreshed.name, refreshed.gameDir);
     this.update({
       phase: 'running',
       message: 'Minecraft is running',
@@ -301,5 +325,141 @@ export class GameService {
 
   isRunning(): boolean {
     return this.child !== null;
+  }
+
+  /** Best-estimate elapsed time for the running session (heartbeat wins over wall clock). */
+  liveSession(): LiveSessionState {
+    const session = this.session;
+    if (!session || !this.child) {
+      return { running: false, instanceId: null, instanceName: null, elapsedSeconds: 0, source: 'none' };
+    }
+    try {
+      const resolved = resolveSessionElapsed({
+        nowMs: Date.now(),
+        wallStartMs: session.wallStartMs,
+        heartbeat: readHeartbeat(session.gameDir),
+        baseline: session.baseline,
+      });
+      session.baseline = resolved.baseline;
+      return {
+        running: true,
+        instanceId: session.instanceId,
+        instanceName: session.instanceName,
+        elapsedSeconds: Math.max(session.committedSeconds, Math.min(resolved.elapsedSeconds, MAX_TRACKED_SECONDS)),
+        source: resolved.source,
+      };
+    } catch {
+      return {
+        running: true,
+        instanceId: session.instanceId,
+        instanceName: session.instanceName,
+        elapsedSeconds: session.committedSeconds,
+        source: 'wall-clock',
+      };
+    }
+  }
+
+  // ------------------------------------------------------- live session sync
+
+  private startSession(instanceId: string, instanceName: string, gameDir: string): void {
+    this.stopSessionTimer();
+    this.session = {
+      instanceId,
+      instanceName,
+      gameDir,
+      wallStartMs: Date.now(),
+      committedSeconds: 0,
+      pendingRemainder: 0,
+      advancedQuestMinutes: 0,
+      baseline: null,
+      timer: null,
+    };
+    const timer = setInterval(() => {
+      void this.syncTick().catch((error: unknown) => {
+        this.deps.logger.warn('progression', `Live sync tick failed: ${error instanceof Error ? error.message : String(error)}`);
+      });
+    }, SYNC_TICK_MS);
+    timer.unref?.();
+    this.session.timer = timer;
+  }
+
+  private stopSessionTimer(): void {
+    if (this.session?.timer) clearInterval(this.session.timer);
+    if (this.session) this.session.timer = null;
+  }
+
+  /**
+   * Periodic sync while the game runs: accrue newly elapsed playtime (points +
+   * quest progress) and re-export the bridge so the mod and the launcher UI
+   * stay live. Never throws.
+   */
+  private async syncTick(): Promise<void> {
+    const session = this.session;
+    const progression = this.deps.progression;
+    if (!session || !progression || !this.child) return;
+    const resolved = resolveSessionElapsed({
+      nowMs: Date.now(),
+      wallStartMs: session.wallStartMs,
+      heartbeat: readHeartbeat(session.gameDir),
+      baseline: session.baseline,
+    });
+    session.baseline = resolved.baseline;
+    const target = Math.min(resolved.elapsedSeconds, MAX_TRACKED_SECONDS);
+    // Clamp per-tick jumps so a time-source switch cannot invent hours.
+    const delta = Math.max(0, Math.min(target - session.committedSeconds, (SYNC_TICK_MS / 1000) * 2 + 5));
+    session.pendingRemainder += delta;
+    const whole = Math.floor(session.pendingRemainder);
+    if (whole >= 1) {
+      const result = progression.accruePlaytime(whole);
+      session.committedSeconds += whole;
+      session.advancedQuestMinutes += result.minutesCommitted;
+      session.pendingRemainder -= whole;
+    }
+    await progression.exportBridge(session.gameDir);
+    await progression.exportBridge();
+  }
+
+  /**
+   * Ends session tracking: accrues the remainder, closes the session with
+   * bonuses, and exports the final bridge. Returns the session length for the
+   * instance playtime counter. Never throws.
+   */
+  private stopSession(): number {
+    const session = this.session;
+    this.stopSessionTimer();
+    this.session = null;
+    const wallSeconds = this.startedAt ? (Date.now() - this.startedAt) / 1000 : 0;
+    const progression = this.deps.progression;
+    if (!session || !progression) return wallSeconds;
+    try {
+      const resolved = resolveSessionElapsed({
+        nowMs: Date.now(),
+        wallStartMs: session.wallStartMs,
+        heartbeat: readHeartbeat(session.gameDir),
+        baseline: session.baseline,
+      });
+      const target = Math.min(resolved.elapsedSeconds, MAX_TRACKED_SECONDS);
+      const delta = Math.max(0, Math.min(target - session.committedSeconds, (SYNC_TICK_MS / 1000) * 2 + 5));
+      session.pendingRemainder += delta;
+      const whole = Math.floor(session.pendingRemainder);
+      if (whole >= 1) {
+        const result = progression.accruePlaytime(whole);
+        session.committedSeconds += whole;
+        session.advancedQuestMinutes += result.minutesCommitted;
+        session.pendingRemainder -= whole;
+      }
+      const sessionMinutes = Math.floor(session.committedSeconds / 60);
+      progression.finishSession({
+        instanceName: session.instanceName,
+        totalSeconds: session.committedSeconds,
+        questMinutes: Math.max(0, sessionMinutes - session.advancedQuestMinutes),
+      });
+      void progression.exportBridge(session.gameDir);
+      void progression.exportBridge();
+      return session.committedSeconds + session.pendingRemainder;
+    } catch (error) {
+      this.deps.logger.warn('progression', `Session rewards failed: ${error instanceof Error ? error.message : String(error)}`);
+      return wallSeconds;
+    }
   }
 }

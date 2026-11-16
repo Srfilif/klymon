@@ -12,6 +12,7 @@ import com.klymon.clientmenu.hud.HudAnchor;
 import com.klymon.clientmenu.logic.ComboTracker;
 import com.klymon.clientmenu.logic.CpsTracker;
 import com.klymon.clientmenu.logic.LevelCurve;
+import com.klymon.clientmenu.logic.SessionAccumulator;
 
 /**
  * Headless tests for the Minecraft-free core (settings, trackers, profiles,
@@ -30,6 +31,7 @@ public final class LogicTest {
         testHudAnchor();
         testAddonState();
         testLevelCurve();
+        testSessionAccumulator();
         System.out.println("LOGIC-TEST-PASS count=" + passed);
     }
 
@@ -278,5 +280,27 @@ public final class LogicTest {
         float fraction = LevelCurve.progressFraction(150L);
         check(fraction > 0.24f && fraction < 0.26f, "fraction halfway L2 (150/200)");
         check(LevelCurve.progressFraction(100L) == 0.0f, "fraction at floor is zero");
+    }
+
+    // ----------------------------------------------------- sessionAccumulator
+
+    private static void testSessionAccumulator() {
+        SessionAccumulator acc = new SessionAccumulator();
+        acc.tick(1000L, true);
+        check(acc.totalSeconds() == 0L, "accumulator ignores the first tick");
+        acc.tick(3000L, true);
+        check(acc.totalSeconds() == 2L, "accumulator counts in-world time");
+        acc.tick(8000L, false);
+        check(acc.totalSeconds() == 2L, "accumulator skips menu time");
+        acc.tick(9000L, true);
+        check(acc.totalSeconds() == 3L, "accumulator resumes in world");
+        acc.tick(5000L, true);
+        check(acc.totalSeconds() == 3L, "accumulator ignores clock jumps back");
+        String json = SessionAccumulator.heartbeatJson("run-1", 1234L, 42L);
+        check(json.contains("\"version\":1"), "heartbeat carries version");
+        check(json.contains("\"runId\":\"run-1\""), "heartbeat carries run id");
+        check(json.contains("\"totalInWorldSeconds\":42"), "heartbeat carries seconds");
+        acc.reset();
+        check(acc.totalSeconds() == 0L, "accumulator resets");
     }
 }

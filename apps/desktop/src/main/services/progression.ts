@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ensureDir, LauncherError, writeJsonAtomic, type LauncherLogger } from '@klymon/core';
 import type { ProgressionRepository, ProgressionProfileRow } from '@klymon/database';
@@ -19,6 +20,7 @@ import {
   progressToNextLevel,
   rankById,
   SESSION_COMPLETE_BONUS,
+  SESSION_COMPLETE_MIN_SECONDS,
   titleById,
   TITLES,
   weeklyQuestsFor,
@@ -82,6 +84,80 @@ export interface KlymonBridge {
 }
 
 const ACHIEVEMENT_WINDOW = 'lifetime';
+
+/** How long a mod heartbeat stays trustworthy without a refresh. */
+export const HEARTBEAT_MAX_STALE_MS = 45_000;
+
+/** Snapshot written by the mod to `<gameDir>/config/klymon-session.json`. */
+export interface HeartbeatSnapshot {
+  runId: string;
+  updatedAtMs: number;
+  totalInWorldSeconds: number;
+}
+
+export interface HeartbeatBaseline {
+  runId: string;
+  total: number;
+}
+
+export type SessionTimeSource = 'heartbeat' | 'wall-clock';
+
+/**
+ * Reads the mod heartbeat tolerantly: missing files, corrupt JSON, unknown
+ * versions and invalid fields all yield null (the caller falls back to the
+ * wall clock) instead of throwing into game flows.
+ */
+export function readHeartbeat(gameDir: string): HeartbeatSnapshot | null {
+  try {
+    const file = join(gameDir, 'config', 'klymon-session.json');
+    if (!existsSync(file)) return null;
+    const parsed: unknown = JSON.parse(readFileSync(file, 'utf8'));
+    if (typeof parsed !== 'object' || parsed === null) return null;
+    const record = parsed as Record<string, unknown>;
+    if (record['version'] !== 1) return null;
+    const runId = record['runId'];
+    const updatedAtMs = record['updatedAtMs'];
+    const totalInWorldSeconds = record['totalInWorldSeconds'];
+    if (typeof runId !== 'string' || runId.length === 0 || runId.length > 64) return null;
+    if (typeof updatedAtMs !== 'number' || !Number.isFinite(updatedAtMs) || updatedAtMs <= 0) return null;
+    if (typeof totalInWorldSeconds !== 'number' || !Number.isFinite(totalInWorldSeconds) || totalInWorldSeconds < 0) return null;
+    return { runId, updatedAtMs, totalInWorldSeconds: Math.floor(totalInWorldSeconds) };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Resolves the authoritative session elapsed time. A fresh heartbeat wins
+ * (it only advances while the player is in a world); otherwise the wall
+ * clock is used. The baseline pins the heartbeat counter to the session so
+ * a new game run re-baselines instead of jumping backwards.
+ */
+export function resolveSessionElapsed(input: {
+  nowMs: number;
+  wallStartMs: number;
+  heartbeat: HeartbeatSnapshot | null;
+  baseline: HeartbeatBaseline | null;
+  maxStaleMs?: number;
+}): { elapsedSeconds: number; source: SessionTimeSource; baseline: HeartbeatBaseline | null } {
+  const wallElapsed = Math.max(0, Math.floor((input.nowMs - input.wallStartMs) / 1000));
+  const heartbeat = input.heartbeat;
+  const maxStale = input.maxStaleMs ?? HEARTBEAT_MAX_STALE_MS;
+  const fresh =
+    heartbeat !== null && heartbeat.updatedAtMs <= input.nowMs + 2000 && input.nowMs - heartbeat.updatedAtMs <= maxStale;
+  if (!fresh || !heartbeat) {
+    return { elapsedSeconds: wallElapsed, source: 'wall-clock', baseline: input.baseline };
+  }
+  const baseline =
+    input.baseline === null || input.baseline.runId !== heartbeat.runId
+      ? { runId: heartbeat.runId, total: 0 }
+      : input.baseline;
+  return {
+    elapsedSeconds: Math.max(0, heartbeat.totalInWorldSeconds - baseline.total),
+    source: 'heartbeat',
+    baseline,
+  };
+}
 
 export class ProgressionService {
   constructor(private readonly deps: ProgressionServiceDeps) {}
@@ -252,19 +328,52 @@ export class ProgressionService {
     return this.deps.repo.ledger(2000).some((row) => row.dayKey === dayKey && row.source === source);
   }
 
-  /** Called when a game session ends. Awards playtime + bonuses and tracks quests. */
-  onSessionEnd(input: { seconds: number; instanceName: string }): SessionAward {
+  /**
+   * Commits playtime seconds while a session is still running. Called every
+   * sync tick by the game service so the launcher UI and the in-game bridge
+   * stay live; points follow completed minutes under the shared daily caps.
+   */
+  accruePlaytime(seconds: number): { points: number; minutesCommitted: number } {
     const dayKey = localDayKey();
-    const computed = playtimePointsForSession(input.seconds);
-    const alreadyRewarded = this.rewardedMinutesToday(dayKey);
-    const rewardableMinutes = Math.max(0, Math.min(computed.minutes, MAX_REWARDED_PLAY_MINUTES_PER_DAY - alreadyRewarded));
-    const cappedSession = Math.min(Math.max(0, Math.floor(input.seconds)), 12 * 3600);
+    const delta = Math.max(0, Math.min(Math.floor(seconds), 12 * 3600));
+    if (delta <= 0) return { points: 0, minutesCommitted: 0 };
+    const row = this.deps.repo.profile();
+    const beforeMinutes = Math.floor(row.playSeconds / 60);
+    this.deps.repo.saveProfile({ playSeconds: row.playSeconds + delta });
+    const newMinutes = Math.floor((row.playSeconds + delta) / 60) - beforeMinutes;
+    let points = 0;
+    if (newMinutes > 0) {
+      const alreadyRewarded = this.rewardedMinutesToday(dayKey);
+      const rewardable = Math.max(0, Math.min(newMinutes, MAX_REWARDED_PLAY_MINUTES_PER_DAY - alreadyRewarded));
+      if (rewardable > 0) {
+        points = this.award(dayKey, 'playtime', rewardable * 2, JSON.stringify({ minutes: rewardable })).granted;
+      }
+      this.trackSessionQuests({ dayKey, weekKey: localWeekKey(), minutes: newMinutes, sessions: 0, longSession: false });
+    }
+    this.changed();
+    return { points, minutesCommitted: Math.max(0, newMinutes) };
+  }
 
+  /**
+   * Closes a session: counters, first-session/completion bonuses and the final
+   * quest pass. `questMinutes` carries the session minutes that were not
+   * advanced by live accrual (0 when the session was fully accrued).
+   */
+  finishSession(input: { instanceName: string; totalSeconds: number; questMinutes: number }): {
+    points: number;
+    completed: boolean;
+    firstOfDay: boolean;
+    leveledUp: boolean;
+    newLevel: number;
+    questsCompleted: string[];
+  } {
+    const dayKey = localDayKey();
+    const totalSeconds = Math.max(0, Math.min(Math.floor(input.totalSeconds), 12 * 3600));
+    const completed = totalSeconds >= SESSION_COMPLETE_MIN_SECONDS;
     const row = this.deps.repo.profile();
     const days = this.daysOf(row);
     const isNewDay = !days.includes(dayKey);
     this.deps.repo.saveProfile({
-      playSeconds: row.playSeconds + cappedSession,
       sessions: row.sessions + 1,
       daysJson: JSON.stringify(isNewDay ? [...days, dayKey].slice(-3650) : days),
     });
@@ -272,12 +381,6 @@ export class ProgressionService {
     let points = 0;
     let leveledUp = false;
     let newLevel = levelForPoints(row.lifetimePoints);
-    if (rewardableMinutes > 0) {
-      const result = this.award(dayKey, 'playtime', rewardableMinutes * 2, JSON.stringify({ minutes: rewardableMinutes }));
-      points += result.granted;
-      leveledUp = leveledUp || result.leveledUp;
-      newLevel = result.newLevel;
-    }
     const firstOfDay = !this.hasLedgerSourceToday(dayKey, 'first-session');
     if (firstOfDay) {
       const result = this.award(dayKey, 'first-session', FIRST_SESSION_OF_DAY_BONUS, input.instanceName.slice(0, 80));
@@ -285,7 +388,7 @@ export class ProgressionService {
       leveledUp = leveledUp || result.leveledUp;
       newLevel = result.newLevel;
     }
-    if (computed.completed) {
+    if (completed) {
       const result = this.award(dayKey, 'session-complete', SESSION_COMPLETE_BONUS, input.instanceName.slice(0, 80));
       points += result.granted;
       leveledUp = leveledUp || result.leveledUp;
@@ -295,12 +398,36 @@ export class ProgressionService {
     const questsCompleted = this.trackSessionQuests({
       dayKey,
       weekKey: localWeekKey(),
-      minutes: computed.minutes,
+      minutes: Math.max(0, Math.floor(input.questMinutes)),
       sessions: 1,
-      longSession: cappedSession >= 3600,
+      longSession: totalSeconds >= 3600,
     });
-
     if (points > 0) {
+      this.deps.emit('progression:reward', {
+        kind: 'points',
+        title: `+${points} puntos`,
+        detail: `Bonificaciones de sesión en ${input.instanceName}.`,
+        points,
+        level: null,
+      });
+    }
+    this.changed();
+    return { points, completed, firstOfDay, leveledUp, newLevel, questsCompleted };
+  }
+
+  /** All-at-once path for a session with no live accrual (kept for tests and reuse). */
+  onSessionEnd(input: { seconds: number; instanceName: string }): SessionAward {
+    const computed = playtimePointsForSession(input.seconds);
+    const cappedSession = Math.min(Math.max(0, Math.floor(input.seconds)), 12 * 3600);
+    const levelBefore = levelForPoints(this.deps.repo.profile().lifetimePoints);
+    const accrued = this.accruePlaytime(cappedSession);
+    const finished = this.finishSession({
+      instanceName: input.instanceName,
+      totalSeconds: cappedSession,
+      questMinutes: Math.max(0, computed.minutes - accrued.minutesCommitted),
+    });
+    const points = accrued.points + finished.points;
+    if (accrued.points > 0) {
       this.deps.emit('progression:reward', {
         kind: 'points',
         title: `+${points} puntos`,
@@ -309,8 +436,16 @@ export class ProgressionService {
         level: null,
       });
     }
-    this.changed();
-    return { seconds: cappedSession, minutesRewarded: rewardableMinutes, points, completed: computed.completed, firstOfDay, leveledUp, newLevel, questsCompleted };
+    return {
+      seconds: cappedSession,
+      minutesRewarded: accrued.minutesCommitted,
+      points,
+      completed: finished.completed,
+      firstOfDay: finished.firstOfDay,
+      leveledUp: finished.newLevel > levelBefore,
+      newLevel: finished.newLevel,
+      questsCompleted: finished.questsCompleted,
+    };
   }
 
   // ---------------------------------------------------------------- quests
@@ -689,11 +824,12 @@ export class ProgressionService {
   }
 
   /**
-   * Writes the versioned JSON bridge the in-game mod reads. Best-effort and
-   * synchronous-safe: failures are logged, never thrown into game flows.
+   * Writes the versioned JSON bridge the in-game mod reads. Best-effort:
+   * failures are logged, never thrown into game flows. An explicit game dir
+   * targets the running instance; otherwise the Klymon Client instance is used.
    */
-  async exportBridge(): Promise<string | null> {
-    const gameDir = this.deps.resolveClientGameDir();
+  async exportBridge(gameDirOverride?: string | null): Promise<string | null> {
+    const gameDir = gameDirOverride ?? this.deps.resolveClientGameDir();
     if (!gameDir) return null;
     try {
       const snapshot = this.profile();

@@ -1,6 +1,6 @@
-import { useState } from 'react';
-import { Coins, ShieldAlert } from 'lucide-react';
-import type { LedgerEntryModel } from '@klymon/shared-types';
+import { useEffect, useState } from 'react';
+import { Coins, Gamepad2, ShieldAlert } from 'lucide-react';
+import type { LedgerEntryModel, LiveSessionModel } from '@klymon/shared-types';
 import { errorMessage, invoke, useAsync, useEvent } from '../lib/api';
 import { useApp } from '../lib/app-context';
 import { useI18n } from '../lib/i18n';
@@ -13,14 +13,37 @@ import { PageHeader, Progress, Section, Spinner, Stat } from '../components/ui/m
 
 export function ProfilePage(): React.JSX.Element {
   const { t, language } = useI18n();
-  const { toast, activeAccount } = useApp();
+  const { toast, activeAccount, launch } = useApp();
   const profile = useProgressionProfile();
   const ledger = useAsync<LedgerEntryModel[]>(() => invoke('progression:ledger', { limit: 60 }), []);
   const [busyTitle, setBusyTitle] = useState(false);
+  const [live, setLive] = useState<LiveSessionModel | null>(null);
 
   useEvent('data:changed', ({ scope }) => {
     if (scope === 'progression') ledger.reload();
   });
+
+  useEffect(() => {
+    if (launch.phase !== 'running') {
+      setLive(null);
+      return;
+    }
+    let cancelled = false;
+    const poll = async (): Promise<void> => {
+      try {
+        const session = await invoke('progression:session');
+        if (!cancelled) setLive(session.running ? session : null);
+      } catch {
+        if (!cancelled) setLive(null);
+      }
+    };
+    void poll();
+    const timer = setInterval(() => void poll(), 10_000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [launch.phase]);
 
   const setTitle = async (titleId: string | null): Promise<void> => {
     setBusyTitle(true);
@@ -97,6 +120,27 @@ export function ProfilePage(): React.JSX.Element {
               </div>
             </CardContent>
           </Card>
+
+          {live ? (
+            <Card className="border-success/40">
+              <CardContent className="flex items-center gap-3 p-4">
+                <span className="relative flex size-3">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-60" />
+                  <span className="relative inline-flex size-3 rounded-full bg-success" />
+                </span>
+                <Gamepad2 className="size-5 text-success" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold">
+                    {t('prog.session.live')} · {formatDuration(live.elapsedSeconds)}
+                  </p>
+                  <p className="truncate text-[11px] text-muted-foreground">
+                    {live.instanceName ?? ''} ·{' '}
+                    {live.source === 'heartbeat' ? t('prog.session.source.heartbeat') : t('prog.session.source.wall')}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          ) : null}
 
           {!data.integrityOk ? (
             <Card className="border-warning/40">
