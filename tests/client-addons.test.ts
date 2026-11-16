@@ -1,10 +1,11 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { unzipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
 import { KLYMON_CLIENT, CLIENT_MOD_FILE } from '../apps/desktop/src/main/services/client';
+import { GSON_VERSION } from '../scripts/build-client-mod.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const clientModJar = join(root, 'apps', 'desktop', 'resources', 'client-mod', CLIENT_MOD_FILE);
@@ -184,12 +185,12 @@ describe('Klymon Client performance bundle', () => {
 });
 
 describe('Klymon Client addon logic (headless Java)', () => {
-  it('passes the settings/tracker/profile/anchor suite on the real sources', () => {
+  it('passes the settings/tracker/profile/anchor suite on the real sources', async () => {
     const javac = findJdkTool('javac');
     const java = findJdkTool('java');
     expect(javac).not.toBeNull();
     expect(java).not.toBeNull();
-    const gson = join(root, '.tools', 'gson-2.11.0.jar');
+    const gson = await ensureGsonJar();
     expect(existsSync(gson)).toBe(true);
 
     const outDir = join(clientModDir, 'build', 'logic-test');
@@ -221,6 +222,47 @@ describe('Klymon Client addon logic (headless Java)', () => {
     expect(count).toBeGreaterThan(80);
   }, 120_000);
 });
+
+/**
+ * Resolves the compile-only Gson jar. `.tools/` is gitignored and only exists
+ * after a local `pnpm client:build`, so fresh checkouts (CI runners) fetch the
+ * same pinned version from Maven Central instead of failing. Retries transient
+ * network failures and validates the artifact before use.
+ */
+async function ensureGsonJar(): Promise<string> {
+  const jar = join(root, '.tools', `gson-${GSON_VERSION}.jar`);
+  if (isUsableJar(jar)) return jar;
+  mkdirSync(join(root, '.tools'), { recursive: true });
+  const url = `https://repo1.maven.org/maven2/com/google/code/gson/gson/${GSON_VERSION}/gson-${GSON_VERSION}.jar`;
+  let lastError = 'unknown error';
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const response = await fetch(url, { redirect: 'follow' });
+      if (!response.ok) throw new Error(`GET ${url} returned ${response.status}`);
+      const bytes = Buffer.from(await response.arrayBuffer());
+      if (bytes.length < 2 || bytes[0] !== 0x50 || bytes[1] !== 0x4b) {
+        throw new Error('downloaded gson jar is not a zip archive (missing PK header)');
+      }
+      writeFileSync(jar, bytes);
+      return jar;
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+      rmSync(jar, { force: true });
+      if (attempt < 3) await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
+    }
+  }
+  throw new Error(`Could not fetch gson ${GSON_VERSION} from Maven Central: ${lastError}`);
+}
+
+function isUsableJar(path: string): boolean {
+  try {
+    if (!existsSync(path) || statSync(path).size === 0) return false;
+    const header = readFileSync(path).subarray(0, 2);
+    return header.length === 2 && header[0] === 0x50 && header[1] === 0x4b;
+  } catch {
+    return false;
+  }
+}
 
 function findJdkTool(name: string): string | null {
   const executable = process.platform === 'win32' ? `${name}.exe` : name;

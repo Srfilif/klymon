@@ -15,7 +15,7 @@
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { basename, delimiter, dirname, join, relative } from 'node:path';
+import { basename, delimiter, dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { unzipSync } from 'fflate';
 
@@ -32,7 +32,8 @@ const TINY_REMAPPER_VERSION = '0.15.0';
 const BRIGADIER_VERSION = '1.3.10';
 const SLF4J_VERSION = '2.0.9';
 // Compile-only: Minecraft always ships Gson at runtime, so the mod must not bundle it.
-const GSON_VERSION = '2.11.0';
+// Exported so tests resolve the same pinned version instead of duplicating the literal.
+export const GSON_VERSION = '2.11.0';
 // Compile-only: JOML ships with Minecraft; javac needs it to resolve Box/Camera signatures.
 const JOML_VERSION = '1.10.5';
 const FABRIC_API_MODULES = {
@@ -262,4 +263,6 @@ async function main() {
   log(`built ${relative(root, shipped)} (${statSync(shipped).size} bytes, sha1 ${sha1})`);
 }
 
-await main();
+// Importing this module (e.g. from tests) must not trigger a build.
+const invokedDirectly = process.argv[1] !== undefined && fileURLToPath(import.meta.url) === resolve(process.argv[1]);
+if (invokedDirectly) await main();
