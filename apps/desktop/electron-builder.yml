@@ -1,0 +1,61 @@
+appId: com.klymon.launcher
+productName: Klymon Launcher
+copyright: Copyright © 2026 Klymon Launcher contributors
+directories:
+  output: ../../release
+  buildResources: ../../build
+files:
+  - out/**/*
+  - package.json
+  - '!**/*.map'
+asar: true
+asarUnpack:
+  - '**/*.node'
+  - node_modules/better-sqlite3/**/*
+extraResources:
+  # Bundled Klymon Client menu mod, installed into the instance at runtime.
+  - from: resources/client-mod
+    to: client-mod
+npmRebuild: true
+buildDependenciesFromSource: false
+electronLanguages:
+  - en-US
+  - es
+win:
+  icon: ../../build/icon.ico
+  target:
+    - target: nsis
+      arch: [x64]
+  artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Klymon Launcher
+  deleteAppDataOnUninstall: false
+portable:
+  artifactName: ${productName}-${version}-portable.${ext}
+linux:
+  icon: ../../build/icon.png
+  category: Game
+  maintainer: Klymon Launcher contributors
+  synopsis: Modern Minecraft Java Edition launcher
+  target:
+    - AppImage
+    - deb
+    - rpm
+  artifactName: ${productName}-${version}-${arch}.${ext}
+mac:
+  icon: ../../build/icon.png
+  category: public.app-category.games
+  target:
+    - target: dmg
+      arch: [x64, arm64]
+  artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+  hardenedRuntime: true
+publish:
+  provider: generic
+  url: https://updates.example.com/klymon
+  channel: latest

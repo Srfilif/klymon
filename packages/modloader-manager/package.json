@@ -1,0 +1,13 @@
+{
+  "name": "@klymon/modloader-manager",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Fabric, Quilt, LegacyFabric, Forge and NeoForge installation.",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {"@klymon/core":"workspace:*","@klymon/download-manager":"workspace:*","@klymon/java-manager":"workspace:*","@klymon/shared-types":"workspace:*","@klymon/version-manager":"workspace:*","fflate":"^0.8.2"}
+}

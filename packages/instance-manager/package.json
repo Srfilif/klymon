@@ -1,0 +1,13 @@
+{
+  "name": "@klymon/instance-manager",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Isolated instances: lifecycle, backups and portable archives.",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {"@klymon/core":"workspace:*","@klymon/database":"workspace:*","@klymon/shared-types":"workspace:*"}
+}

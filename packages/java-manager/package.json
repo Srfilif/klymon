@@ -1,0 +1,13 @@
+{
+  "name": "@klymon/java-manager",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Mojang runtime provisioning and system Java discovery.",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {"@klymon/core":"workspace:*","@klymon/download-manager":"workspace:*","@klymon/shared-types":"workspace:*"}
+}

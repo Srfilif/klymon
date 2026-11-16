@@ -1,0 +1,37 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2023"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "forceConsistentCasingInFileNames": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "verbatimModuleSyntax": false,
+    "baseUrl": ".",
+    "paths": {
+      "@klymon/shared-types": ["packages/shared-types/src/index.ts"],
+      "@klymon/shared-types/ipc": ["packages/shared-types/src/ipc.ts"],
+      "@klymon/shared-types/models": ["packages/shared-types/src/models.ts"],
+      "@klymon/core": ["packages/core/src/index.ts"],
+      "@klymon/database": ["packages/database/src/index.ts"],
+      "@klymon/download-manager": ["packages/download-manager/src/index.ts"],
+      "@klymon/authentication": ["packages/authentication/src/index.ts"],
+      "@klymon/version-manager": ["packages/version-manager/src/index.ts"],
+      "@klymon/java-manager": ["packages/java-manager/src/index.ts"],
+      "@klymon/instance-manager": ["packages/instance-manager/src/index.ts"],
+      "@klymon/modloader-manager": ["packages/modloader-manager/src/index.ts"],
+      "@klymon/mod-manager": ["packages/mod-manager/src/index.ts"],
+      "@klymon/skin-manager": ["packages/skin-manager/src/index.ts"],
+      "@klymon/skin-manager/paper-doll": ["packages/skin-manager/src/paper-doll.ts"],
+      "@klymon/performance-manager": ["packages/performance-manager/src/index.ts"],
+      "@klymon/music-manager": ["packages/music-manager/src/index.ts"]
+    }
+  }
+}

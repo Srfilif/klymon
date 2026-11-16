@@ -1,0 +1,46 @@
+{
+  "name": "klymon-launcher",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Klymon Launcher — a modern, modular Minecraft Java Edition launcher (premium and offline accounts).",
+  "license": "MIT",
+  "packageManager": "pnpm@10.18.0",
+  "engines": {
+    "node": ">=20.11"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @klymon/desktop dev",
+    "build": "pnpm --filter @klymon/desktop build",
+    "preview": "pnpm --filter @klymon/desktop preview",
+    "package:win": "pnpm --filter @klymon/desktop package:win",
+    "package:win:portable": "pnpm --filter @klymon/desktop package:win:portable",
+    "package:linux": "pnpm --filter @klymon/desktop package:linux",
+    "package:mac": "pnpm --filter @klymon/desktop package:mac",
+    "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "node scripts/smoke.mjs",
+    "test:e2e:install": "node scripts/e2e.mjs install",
+    "test:e2e:launch": "node scripts/e2e.mjs launch",
+    "icon": "node scripts/generate-icon.mjs",
+    "client:build": "node scripts/build-client-mod.mjs"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^24.10.1",
+    "electron": "45.3.2",
+    "electron-builder": "^26.0.12",
+    "electron-vite": "^4.0.1",
+    "typescript": "^5.9.3",
+    "vite-tsconfig-paths": "^5.1.4",
+    "vitest": "^3.2.4"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "better-sqlite3",
+      "electron",
+      "electron-winstaller",
+      "esbuild"
+    ]
+  }
+}
