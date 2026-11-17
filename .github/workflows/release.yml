@@ -96,6 +96,11 @@ jobs:
       group: release-${{ github.ref }}
       cancel-in-progress: false
     steps:
+      # gh resolves the target repository from git remotes: without a checkout
+      # every gh command fails with "fatal: not a git repository".
+      - name: Checkout
+        uses: actions/checkout@v5
+
       - name: Download installer artifact
         uses: actions/download-artifact@v4
         with:
@@ -105,22 +110,38 @@ jobs:
       - name: List artifacts
         run: ls -la dist
 
+      # Never publish an empty release: a missing/failed download must fail
+      # loudly here instead of creating an empty release below.
+      - name: Verify artifacts present
+        shell: bash
+        run: |
+          shopt -s nullglob
+          files=(dist/*)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo 'dist/ is empty, refusing to publish' >&2
+            exit 1
+          fi
+          echo "Publishing ${#files[@]} file(s)."
+
       # Stable tags (v1.0.0) publish stable releases; hyphenated tags
       # (v1.0.0-beta.1, v1.0.0-rc.1) publish pre-releases. Re-running
       # re-uploads into the same release (--clobber) instead of duplicating it.
+      # -R pins the target repository explicitly instead of relying on
+      # git-remote inference alone.
       - name: Create or update release
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
           TAG="${GITHUB_REF_NAME}"
           FLAGS=""
           if [[ "$TAG" == *"-"* ]]; then FLAGS="--prerelease"; fi
-          if gh release view "$TAG" >/dev/null 2>&1; then
+          if gh release view "$TAG" -R "$GH_REPO" >/dev/null 2>&1; then
             echo "Release $TAG already exists, uploading files into it."
           else
             # $FLAGS is intentionally unquoted: empty for stable releases.
             # shellcheck disable=SC2086
-            gh release create "$TAG" --title "$TAG" --generate-notes $FLAGS
+            gh release create "$TAG" --title "$TAG" --generate-notes $FLAGS -R "$GH_REPO"
           fi
-          gh release upload "$TAG" dist/* --clobber
+          gh release upload "$TAG" dist/* --clobber -R "$GH_REPO"
