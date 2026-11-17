@@ -1,34 +1,24 @@
 name: Release
 
-# Tag pushes (v*) build every platform and upload the installers to a draft
-# GitHub release. Manual runs execute the same gates and builds but publish
-# nothing, which is how you dry-run the pipeline.
+# Windows distribution pipeline (Klymon Launcher ships NSIS x64 installers):
+# - pushes to main -> gates + package + downloadable build artifact (public
+#   releases are never created per commit)
+# - tags vX.Y.Z    -> gates + package + published stable GitHub Release
+# - tags vX.Y.Z-*  -> same, but published as a pre-release
+# - manual runs    -> gates + package + artifact, never publishes
 on:
   push:
-    tags:
-      - 'v*'
+    branches: [main]
+    tags: ['v*']
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  build:
-    name: Build (${{ matrix.name }})
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: win
-            os: windows-latest
-            builder-args: --win nsis
-          - name: linux
-            os: ubuntu-latest
-            builder-args: --linux
-          - name: mac
-            os: macos-latest
-            builder-args: --mac
-    runs-on: ${{ matrix.os }}
+  build-windows:
+    name: Build Windows installer
+    runs-on: windows-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -46,15 +36,12 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      # The Vitest suite compiles and runs the headless Java logic tests.
       - name: Setup JDK 21
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 21
-
-      - name: Install Linux packaging tools
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y rpm libarchive-tools
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -68,45 +55,72 @@ jobs:
       - name: Build app bundles
         run: pnpm build
 
-      - name: Package (${{ matrix.name }})
+      # Same flags as `pnpm package:win` minus its redundant rebuild: the
+      # bundles above are reused. Output lands in release/.
+      - name: Package NSIS installer
         working-directory: apps/desktop
-        run: pnpm exec electron-builder ${{ matrix.builder-args }} --config electron-builder.yml --publish never
+        run: pnpm exec electron-builder --win nsis --config electron-builder.yml --publish never
 
-      - name: Upload artifacts
+      # The installer and the electron-updater metadata must all exist;
+      # a partial set never reaches artifacts or releases.
+      - name: Validate artifacts
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem release/*.exe
+          if (-not $exe) { Write-Error 'No .exe installer found in release/'; exit 1 }
+          if (-not (Test-Path release/latest.yml)) { Write-Error 'latest.yml (auto-update metadata) is missing'; exit 1 }
+          if (-not (Test-Path release/*.exe.blockmap)) { Write-Error 'NSIS blockmap (differential updates) is missing'; exit 1 }
+          Get-ChildItem release/*.exe, release/*.blockmap, release/latest.yml | Format-Table Name, Length
+
+      - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: release-${{ matrix.name }}
-          path: release/*
+          name: klymon-windows-installer-${{ github.run_number }}-${{ github.sha }}
+          # Exactly the distributable set. Excludes win-unpacked/ and the
+          # builder debug files that also land in release/.
+          path: |
+            release/*.exe
+            release/*.exe.blockmap
+            release/latest.yml
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 14
 
   release:
-    name: Publish draft release
-    needs: build
+    name: Publish GitHub Release
+    needs: build-windows
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: release-${{ github.ref }}
+      cancel-in-progress: false
     steps:
-      - name: Download artifacts
+      - name: Download installer artifact
         uses: actions/download-artifact@v4
         with:
-          pattern: release-*
-          path: dist-artifacts
-          merge-multiple: true
+          name: klymon-windows-installer-${{ github.run_number }}-${{ github.sha }}
+          path: dist
 
       - name: List artifacts
-        run: ls -la dist-artifacts
+        run: ls -la dist
 
-      # One job publishes everything so parallel builders can never race or
-      # create duplicate drafts. Re-running the workflow re-uploads into the
-      # same draft (--clobber) instead of failing.
-      - name: Create or update draft release
+      # Stable tags (v1.0.0) publish stable releases; hyphenated tags
+      # (v1.0.0-beta.1, v1.0.0-rc.1) publish pre-releases. Re-running
+      # re-uploads into the same release (--clobber) instead of duplicating it.
+      - name: Create or update release
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${GITHUB_REF_NAME}"
+          FLAGS=""
+          if [[ "$TAG" == *"-"* ]]; then FLAGS="--prerelease"; fi
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release $TAG already exists, uploading files into it."
           else
-            gh release create "$TAG" --draft --title "$TAG" --generate-notes
+            # $FLAGS is intentionally unquoted: empty for stable releases.
+            # shellcheck disable=SC2086
+            gh release create "$TAG" --title "$TAG" --generate-notes $FLAGS
           fi
-          gh release upload "$TAG" dist-artifacts/* --clobber
+          gh release upload "$TAG" dist/* --clobber

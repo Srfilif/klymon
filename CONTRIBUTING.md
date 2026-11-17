@@ -49,19 +49,19 @@ Guidelines:
 
 ## Releases
 
-Releases are automated with GitHub Actions ([release.yml](.github/workflows/release.yml)):
+Releases are automated with GitHub Actions — full guide in [docs/CI-CD.md](docs/CI-CD.md):
 
 1. Bump `version` in `apps/desktop/package.json` (artifact names come from there) and update [CHANGELOG.md](CHANGELOG.md). Commit to `main`.
 2. Tag and push: `git tag vX.Y.Z && git push origin vX.Y.Z` (keep the tag in sync with the bumped version).
-3. The workflow runs typecheck + tests + bundles on Windows, Linux and macOS, packages each platform, and uploads everything into a **draft** release named after the tag.
-4. Review the draft on GitHub (notes are auto-generated, edit them if needed) and click **Publish**.
+3. The workflow runs typecheck + tests + bundles on Windows, packages the NSIS installer, and publishes a **stable** release named after the tag with auto-generated notes.
+4. Hyphenated tags (`vX.Y.Z-beta.1`, `vX.Y.Z-rc.1`) publish as **pre-releases** instead.
 
 Notes:
 
-- Every push to `main` and every PR runs the lighter [ci.yml](.github/workflows/ci.yml) gates (typecheck, tests, bundles).
-- `workflow_dispatch` on the release workflow dry-runs the builds without publishing anything.
-- Builds are unsigned: Windows SmartScreen and macOS Gatekeeper will warn. To sign, add the standard electron-builder secrets (`CSC_LINK`/`CSC_KEY_PASSWORD`, plus Apple notarization credentials) as repository secrets — no workflow change needed.
-- To publish releases without the manual review step, change the `gh release create --draft` flag in `release.yml` (not recommended until the pipeline has proven itself).
+- Every push to `main` also produces a downloadable installer artifact (no public release); every PR runs the lighter [ci.yml](.github/workflows/ci.yml) gates.
+- `workflow_dispatch` on the release workflow dry-runs the build without publishing anything.
+- Automated distribution is Windows-only; `package:linux` and `package:mac` remain available for manual runs.
+- Builds are unsigned: Windows SmartScreen will warn. To sign, add the standard electron-builder secrets (`CSC_LINK`/`CSC_KEY_PASSWORD`) as repository secrets — no workflow change needed.
 
 ## Pull requests
 

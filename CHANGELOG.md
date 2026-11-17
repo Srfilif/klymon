@@ -16,7 +16,7 @@ All notable changes are documented here. Format follows [Keep a Changelog](https
 - Cosmetics shop and inventory (28 items across cape/wings/hat/particles/aura/trail/pet/emote/entrance/profile, five rarities), equip/unequip loadout, daily streak rewards, rotating daily/weekly quests and permanent achievements with claim flow.
 - Player profile page (identity, level, stats, loadout, points history), quests page, shop page, header balance chip and reward toasts; Spanish/English strings throughout.
 - `klymon-menu` 1.3.0: `[K]` identity on every Klymon surface, in-game player profile screen, level-progress HUD addon, and real client-side cosmetics (procedural cape/wings, item hats/pets, particle trails/auras, entrance bursts, emote keybind).
-- Automated releases: pushing a `v*` tag runs typecheck, tests and packaging on Windows/Linux/macOS and uploads the installers to a draft GitHub release; every push/PR runs the lighter CI gates.
+- Windows distribution pipeline: pushes to `main` produce a downloadable NSIS installer artifact, `vX.Y.Z` tags publish stable GitHub Releases and hyphenated tags publish pre-releases; every push/PR runs the lighter CI gates. Documented in `docs/CI-CD.md`.
 
 ### Changed
 
