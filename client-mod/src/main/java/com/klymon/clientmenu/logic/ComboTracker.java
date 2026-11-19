@@ -9,6 +9,7 @@ public final class ComboTracker {
     private int hits;
     private long lastHitMs = -1L;
     private int best;
+    private final HurtEdge hurtEdge = new HurtEdge();
 
     public void recordHit(long nowMs) {
         this.hits++;
@@ -42,9 +43,23 @@ public final class ComboTracker {
         this.lastHitMs = -1L;
     }
 
+    /**
+     * Feeds the player's {@code hurtTime}. Any rise means fresh damage and
+     * breaks the combo — unlike sampling the exact peak frame, a rise cannot
+     * be missed between ticks. Returns true when the combo broke.
+     */
+    public boolean noteHurtTime(int hurtTime) {
+        boolean rose = this.hurtEdge.rose(hurtTime);
+        if (rose) {
+            breakCombo();
+        }
+        return rose;
+    }
+
     public void reset() {
         this.hits = 0;
         this.lastHitMs = -1L;
         this.best = 0;
+        this.hurtEdge.reset();
     }
 }

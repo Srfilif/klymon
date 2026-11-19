@@ -98,6 +98,13 @@ public final class KlymonSettingsScreen extends Screen {
                 .dimensions(left, row, COLUMN_WIDTH, 20)
                 .build());
 
+        row += 24;
+        this.addDrawableChild(ButtonWidget.builder(
+                        Text.translatable("klymon.settings.account"),
+                        button -> this.client.setScreen(new KlymonLinkScreen(this)))
+                .dimensions(left, row, COLUMN_WIDTH, 20)
+                .build());
+
         row += 32;
         int navWidth = 126;
         int navStep = 132;

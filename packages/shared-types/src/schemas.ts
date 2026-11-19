@@ -45,6 +45,8 @@ export const zSettingsPatch = z
     reducedMotion: z.boolean(),
     fontScale: z.number().min(0.75).max(1.5),
     clientInstanceId: z.string().uuid().nullable(),
+    platformApiUrl: z.string().url().max(256),
+    syncProfileId: z.string().uuid().nullable(),
   })
   .partial()
   .strict();

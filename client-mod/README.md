@@ -9,7 +9,7 @@ launcher-managed performance mods.
 
 - Mod id: `klymon-menu`
 - Environment: `client`
-- Target: Minecraft `~1.21.1`, Fabric loader `>=0.15.0`, Java 21, Fabric API
+- Target: Minecraft `~1.21.1` and `~1.21` (one jar each), Fabric loader `>=0.15.0`, Java 21, Fabric API
 
 ## Addon system
 
@@ -41,6 +41,38 @@ Entity Culling, More Culling, Dynamic FPS and ModernFix with live
 installed/missing detection. They are installed by the launcher, never by
 the mod; ModernFix is intentionally optional (see
 `apps/desktop/src/main/services/client.ts` for the rationale).
+
+## Third-party addons (sandboxed)
+
+Drop jars into `config/klymon/addons`; they load once at startup through
+`thirdparty.ThirdPartyAddons`. Third-party code only sees the facade
+(`thirdparty.api`) — it can never touch game classes, disk, or network:
+
+| Capability | Interface | What the addon gets |
+| --- | --- | --- |
+| `hud` | `HudAddon` | Fill a `HudCanvas` (text/rect commands, 64/frame budget); the platform flushes it |
+| `tick` | `TickAddon` | Immutable `TickState` per client tick (tick, fps, player name, in-world) |
+| `config` | `ConfigurableAddon` | String-map defaults delivered at load (in-memory in v1) |
+
+Every jar needs `klymon-addon.json` at its root:
+
+```json
+{
+  "id": "my-addon",
+  "version": "1.0.0",
+  "mainClass": "com.example.myaddon.MyAddon",
+  "capabilities": ["hud", "tick"]
+}
+```
+
+Declared capabilities must match the implemented interfaces both ways.
+Load-time gates: 8 MiB jar cap, 300-class cap, a constant-pool policy scan
+before any addon class is defined, and an isolating child-first class loader
+(one per addon, no shared statics). Reserved jar namespaces (`java/`,
+`com/klymon/`, `net/`, …) are rejected. Any throwable escaping an addon
+disables it for the session with one log line — a bad jar can neither crash
+the game nor spam the log. See `docs/DECISIONS.md` (ADR-029) for the full
+rationale.
 
 ## HUD editor
 
@@ -104,10 +136,13 @@ intermediary with `tiny-remapper`. Both the script and
 
 ## Output
 
-The packaged jar is written to `apps/desktop/resources/client-mod/klymon-menu.jar`
-and is committed, because the launcher ships it as an `extraResources` entry.
-`ClientService` copies it into the Klymon Client instance's `mods/` directory
-on install and launch (SHA-1 compared, so it is a no-op when current).
+One packaged jar per supported version is written to
+`apps/desktop/resources/client-mod/klymon-menu-<mc>.jar` (same sources,
+per-version Yarn/intermediary toolchain, per-version `fabric.mod.json`
+minecraft pin) and committed, because the launcher ships the directory as an
+`extraResources` entry. `ClientService` copies the matching jar into the
+Klymon Client instance's `mods/` directory as `klymon-menu.jar` on install
+and launch (SHA-1 compared, so it is a no-op when current).
 
 ## Identity and cosmetics (local)
 
@@ -129,6 +164,32 @@ file degrades to prefix `[K]`, level 1, no cosmetics.
   `config/klymon-session.json` every 10 s plus on world unload, so the
   launcher accrues live playtime instead of waiting for exit.
 
+## Platform link (launcher handoff + device codes)
+
+When the launcher exports a `handoff` (`{code, expiresAt, apiUrl}`) in the
+bridge at launch, `platform.PlatformLink` exchanges it (worker thread, never
+the client thread) for a limited client session held in memory only. The
+title screen footer shows `Klymon: <username>` once linked. Without the
+launcher, Settings → Platform account runs the device flow instead
+(`platform.DeviceLink` + `KlymonLinkScreen`): the game shows a user code to
+approve in the dashboard, using its own API base from
+`config/klymon-platform.json` (owned by `platform.ApiBaseStore`). Rules:
+
+- Only the four auth endpoints built by `platform.PlatformUrls`
+  (`POST …/handoff/exchange`, `POST …/refresh`, `POST …/device/code`,
+  `POST …/device/token`) are ever requested; HTTPS is required except
+  loopback HTTP for local development.
+- One code is exchanged at most once per run; transient failures back off
+  30 s, rejections consume the code. Access tokens refresh ahead of expiry.
+- Tokens are never logged or written to disk. An unlinked game (signed out,
+  offline, expired code) plays exactly like before.
+- Covered by `LogicTest` (`testPlatformLink`, `testDeviceLink`) plus the
+  R4.1 network-allowlist test in `tests/client-addons.test.ts`.
+- Live pass: `tests/e2e-link.test.ts` (scheduled CI, xvfb) boots the real
+  game with a stub API and asserts the link log lines for both flows. The
+  JVM flag `-Dklymon.e2e.autolink=true` is e2e-only: it lets the suite drive
+  the device flow headlessly and is never set in production.
+
 ## Known limitations
 
 - The custom crosshair draws **over** the vanilla one: suppressing vanilla's
@@ -145,3 +206,6 @@ file degrades to prefix `[K]`, level 1, no cosmetics.
   other Klymon users' prefixes would require a server-side companion.
 - Cosmetics render for the local player only (see above): without a server,
   other players cannot receive your bridge file.
+- Third-party addon config is in-memory only: `configure()` runs at load and
+  nothing persists it yet. In-game third-party behaviour is covered headless
+  (LogicTest); first real-game proof rides the normal CI launch matrix.

@@ -72,6 +72,7 @@ export const contentTable = sqliteTable(
     installedAt: text('installed_at').notNull(),
     sha1: text('sha1'),
     sourceUrl: text('source_url'),
+    pinned: integer('pinned', { mode: 'boolean' }).notNull().default(false),
   },
   (table) => [index('content_instance_idx').on(table.instanceId, table.kind)],
 );
@@ -197,6 +198,44 @@ export const dailyClaimsTable = sqliteTable('daily_claims', {
   claimedAt: text('claimed_at').notNull(),
 });
 
+export const syncDocsTable = sqliteTable('sync_docs', {
+  profileId: text('profile_id').notNull(),
+  namespace: text('namespace').notNull(),
+  content: text('content').notNull().default('{}'),
+  baseVersion: integer('base_version'),
+  dirty: integer('dirty', { mode: 'boolean' }).notNull().default(false),
+  /** JSON-encoded server copy when a push/pull conflicted; null when clean. */
+  conflict: text('conflict'),
+  updatedAt: text('updated_at').notNull(),
+});
+
+export const syncLkgTable = sqliteTable('sync_lkg', {
+  profileId: text('profile_id').notNull(),
+  namespace: text('namespace').notNull(),
+  content: text('content').notNull(),
+  version: integer('version').notNull(),
+  updatedAt: text('updated_at').notNull(),
+});
+
+export const syncQueueTable = sqliteTable('sync_queue', {
+  id: text('id').primaryKey(),
+  profileId: text('profile_id').notNull(),
+  namespace: text('namespace').notNull(),
+  content: text('content').notNull(),
+  baseVersion: integer('base_version'),
+  force: integer('force', { mode: 'boolean' }).notNull().default(false),
+  enqueuedAt: text('enqueued_at').notNull(),
+});
+
+export const platformSessionTable = sqliteTable('platform_session', {
+  id: text('id').primaryKey(),
+  /** safeStorage-encrypted refresh token (`v1:` payload). Never plaintext. */
+  refreshEnc: text('refresh_enc').notNull(),
+  username: text('username').notNull(),
+  userId: text('user_id').notNull(),
+  updatedAt: text('updated_at').notNull(),
+});
+
 export const schema = {
   settingsTable,
   accountsTable,
@@ -217,6 +256,10 @@ export const schema = {
   cosmeticLoadoutTable,
   questProgressTable,
   dailyClaimsTable,
+  syncDocsTable,
+  syncLkgTable,
+  syncQueueTable,
+  platformSessionTable,
 };
 
 export type LauncherDatabase = BetterSQLite3Database<typeof schema>;
@@ -237,3 +280,7 @@ export type CosmeticsInventoryRow = typeof cosmeticsInventoryTable.$inferSelect;
 export type CosmeticLoadoutRow = typeof cosmeticLoadoutTable.$inferSelect;
 export type QuestProgressRow = typeof questProgressTable.$inferSelect;
 export type DailyClaimRow = typeof dailyClaimsTable.$inferSelect;
+export type SyncDocRow = typeof syncDocsTable.$inferSelect;
+export type SyncLkgRow = typeof syncLkgTable.$inferSelect;
+export type SyncQueueRow = typeof syncQueueTable.$inferSelect;
+export type PlatformSessionRow = typeof platformSessionTable.$inferSelect;

@@ -10,7 +10,7 @@ Klymon Launcher is a pnpm monorepo: one Electron application plus fourteen focus
                                                 │ contextBridge (preload, sandboxed)
 ┌───────────────────────────────────────────────▼──────────────────────────────────────────────────────────┐
 │ main process                                                                                             │
-│  ipc.ts (99 channels, zod validation, sender check)  security.ts (CSP, navigation, permissions)          │
+│  ipc.ts (118 channels, zod validation, sender check)  security.ts (CSP, navigation, permissions)         │
 │  services/  context · game · client · accounts · settings · secrets · news · updater · crash · progression │
 │  protocols.ts  app://bundle · klymon-media://data · klymon-music://music                                 │
 ├──────────────────────────────────────────────────────────────────────────────────────────────────────────┤
@@ -52,9 +52,11 @@ The window is created with a strict `webPreferences` set (`security.ts`), loaded
 
 Packages contain no UI and no Electron API calls where avoidable; `better-sqlite3` and `safeStorage` adapters are injected by the app layer.
 
+TypeScript is split into three projects over `tsconfig.base.json` (strict, ES2023, `@klymon/*` aliases): `tsconfig.node.json` (packages + main + preload + tests) and `tsconfig.web.json` (renderer + preload mirror: DOM lib, `react-jsx`, `noEmit`).
+
 ## IPC
 
-- 99 channels of the form `domain:action` (`versions:list`, `content:install`, `progression:buy`, …).
+- 118 channels of the form `domain:action` (`versions:list`, `content:install`, `progression:buy`, …), counted from `IPC_CHANNELS` (105 in M1 + `onboarding:event` in M3 + `content:pin` in M4 + 4 `platform:*` and 7 `sync:*` in M7 = 118 handlers in `main/ipc.ts`; 76 with zod payload schemas, 42 void).
 - Every payload is validated with a zod schema (`apps/desktop/src/main/ipc-schemas.ts`) before it reaches a service.
 - Handlers verify `event.senderFrame`/origin and reject invocations that do not come from the bundled renderer.
 - Errors are serialised to a stable shape (`code`, `message`, `details`) and rethrown in the renderer as `LauncherError`.

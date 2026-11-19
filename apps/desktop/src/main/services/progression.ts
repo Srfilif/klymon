@@ -81,6 +81,8 @@ export interface KlymonBridge {
     shape: string | null;
     baseItem: string | null;
   }>;
+  /** Launcher→client handoff (§6): single-use code + API base for the mod; scrubbed on the next export. */
+  handoff?: { code: string; expiresAt: string; apiUrl: string } | null;
 }
 
 const ACHIEVEMENT_WINDOW = 'lifetime';
@@ -828,7 +830,7 @@ export class ProgressionService {
    * failures are logged, never thrown into game flows. An explicit game dir
    * targets the running instance; otherwise the Klymon Client instance is used.
    */
-  async exportBridge(gameDirOverride?: string | null): Promise<string | null> {
+  async exportBridge(gameDirOverride?: string | null, handoff?: { code: string; expiresAt: string; apiUrl: string } | null): Promise<string | null> {
     const gameDir = gameDirOverride ?? this.deps.resolveClientGameDir();
     if (!gameDir) return null;
     try {
@@ -837,6 +839,7 @@ export class ProgressionService {
       const bridge: KlymonBridge = {
         version: 1,
         exportedAt: new Date().toISOString(),
+        ...(handoff ? { handoff } : {}),
         displayName: snapshot.identity.displayName,
         rankPrefix: snapshot.identity.rankPrefix,
         rankColor: snapshot.identity.rankColor,

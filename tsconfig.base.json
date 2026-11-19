@@ -16,6 +16,8 @@
     "verbatimModuleSyntax": false,
     "baseUrl": ".",
     "paths": {
+      "@klymon/addon-crypto": ["packages/addon-crypto/src/index.ts"],
+      "@klymon/api-client": ["packages/api-client/src/index.ts"],
       "@klymon/shared-types": ["packages/shared-types/src/index.ts"],
       "@klymon/shared-types/ipc": ["packages/shared-types/src/ipc.ts"],
       "@klymon/shared-types/models": ["packages/shared-types/src/models.ts"],
@@ -32,7 +34,8 @@
       "@klymon/skin-manager/paper-doll": ["packages/skin-manager/src/paper-doll.ts"],
       "@klymon/performance-manager": ["packages/performance-manager/src/index.ts"],
       "@klymon/music-manager": ["packages/music-manager/src/index.ts"],
-      "@klymon/progression": ["packages/progression/src/index.ts"]
+      "@klymon/progression": ["packages/progression/src/index.ts"],
+      "@klymon/sync-engine": ["packages/sync-engine/src/index.ts"]
     }
   }
 }

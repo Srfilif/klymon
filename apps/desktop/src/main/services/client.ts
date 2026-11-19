@@ -4,75 +4,34 @@ import { join } from 'node:path';
 import { LauncherError, pathExists, sha1File, type LauncherLogger } from '@klymon/core';
 import type { InstanceManager } from '@klymon/instance-manager';
 import { ModrinthClient, type ContentManager } from '@klymon/mod-manager';
-import type { ClientStatus, Instance as InstanceModel, LoaderType } from '@klymon/shared-types';
+import type { ClientStatus, Instance as InstanceModel } from '@klymon/shared-types';
+import {
+  DEFAULT_CLIENT_VERSION,
+  KLYMON_CLIENTS,
+  clientModSourceFile,
+  isClientVersion,
+  type KlymonClientProfile,
+} from '@klymon/shared-types';
 import type { SettingsService } from './settings';
 import type { GameService } from './game';
 import type { ProgressionService } from './progression';
 import { installBranding } from './branding';
 
-/** File name of the bundled Fabric menu mod inside `resources/client-mod`. */
-export const CLIENT_MOD_FILE = 'klymon-menu.jar';
+/** Default profile (1.21.1); versioned profiles live in `KLYMON_CLIENTS`. */
+export const KLYMON_CLIENT: KlymonClientProfile = KLYMON_CLIENTS[DEFAULT_CLIENT_VERSION];
 
-/**
- * The bundled client profile. Every entry is a real Modrinth project verified
- * for this Minecraft version + Fabric; dependencies (Fabric API, …) are pulled
- * in automatically by the content manager.
- */
-export const KLYMON_CLIENT = {
-  name: 'Klymon Client',
-  description: 'Perfil de rendimiento y PvP de Klymon (Fabric, mods verificados en Modrinth).',
-  mcVersion: '1.21.1',
-  loaderType: 'fabric' as LoaderType,
-  minMemoryMb: 1024,
-  maxMemoryMb: 4096,
-  jvmArgs: ['-XX:+UseG1GC', '-XX:+ParallelRefProcEnabled', '-XX:MaxGCPauseMillis=200'],
-  /**
-   * Slugs that shipped in earlier profiles and must be pruned during install.
-   * `cull-less-leaves` declares Sodium <0.6 and hard-fails the launch once the
-   * bundle moved to the Sodium 0.8 line. `toggle-sprint` was superseded by the
-   * built-in Toggle Sprint/Sneak addon (klymon-menu 1.2): keeping both would
-   * fight over the same vanilla key states.
-   */
-  retiredSlugs: ['cull-less-leaves', 'toggle-sprint'],
-  /**
-   * Performance bundle (all verified for MC 1.21.1 + Fabric; required
-   * dependencies such as Cloth Config are pulled automatically).
-   *
-   * Deliberately excluded: `modernfix` ships a Fabric 1.21.1 build, but its
-   * scope fully overlaps FerriteCore/Krypton/BadOptimizations already in the
-   * bundle, its dynamic-resources rewrite stays off by default upstream for
-   * compatibility, and it has the highest mixin-conflict surface of the
-   * candidates. It is still listed in the in-game Performance tab as an
-   * optional install instead of being silently omitted.
-   */
-  mods: [
-    { slug: 'sodium', title: 'Sodium' },
-    { slug: 'lithium', title: 'Lithium' },
-    { slug: 'ferrite-core', title: 'FerriteCore' },
-    { slug: 'krypton', title: 'Krypton' },
-    { slug: 'immediatelyfast', title: 'ImmediatelyFast' },
-    { slug: 'entityculling', title: 'Entity Culling' },
-    { slug: 'moreculling', title: 'More Culling' },
-    { slug: 'dynamic-fps', title: 'Dynamic FPS' },
-    { slug: 'badoptimizations', title: 'BadOptimizations' },
-    { slug: 'threadtweak', title: 'ThreadTweak' },
-    { slug: 'no-telemetry', title: 'No Telemetry' },
-    { slug: 'iris', title: 'Iris Shaders' },
-    { slug: 'sodium-extra', title: 'Sodium Extra' },
-    { slug: 'zoomify', title: 'Zoomify' },
-    { slug: 'modmenu', title: 'Mod Menu' },
-    { slug: 'mouse-tweaks', title: 'Mouse Tweaks' },
-  ],
-} as const;
+/** File name of the menu mod inside the instance `mods/` dir (content varies per version). */
+export const INSTALLED_MOD_FILE = 'klymon-menu.jar';
 
 export interface ClientServiceDeps {
   settings: SettingsService;
   instances: InstanceManager;
   content: ContentManager;
   game: GameService;
+  modrinth: Pick<ModrinthClient, 'project'>;
   logger: LauncherLogger;
-  /** Absolute path of the bundled menu mod, or null when it was not packaged. */
-  clientModPath: string | null;
+  /** Directory holding the per-version menu mods (`klymon-menu-<mc>.jar`), or null when unpackaged. */
+  clientModDir: string | null;
   progression: ProgressionService | null;
   emit: (status: ClientStatus) => void;
 }
@@ -80,10 +39,13 @@ export interface ClientServiceDeps {
 export class ClientService {
   private state: ClientStatus;
   private run: Promise<ClientStatus> | null = null;
-  private readonly modrinth = new ModrinthClient();
 
   constructor(private readonly deps: ClientServiceDeps) {
     this.state = this.compute();
+  }
+
+  private get modrinth(): Pick<ModrinthClient, 'project'> {
+    return this.deps.modrinth;
   }
 
   private findInstance(): InstanceModel | null {
@@ -104,21 +66,22 @@ export class ClientService {
 
   private compute(): ClientStatus {
     const instance = this.findInstance();
+    const profile = instance && isClientVersion(instance.mcVersion) ? KLYMON_CLIENTS[instance.mcVersion] : null;
     const modsInstalled = instance
       ? this.deps.content.installed(instance.id, 'mod').length
       : 0;
     const clientMenu = this.clientMenuInstalled(instance);
-    const installed = Boolean(instance?.installed) && modsInstalled >= KLYMON_CLIENT.mods.length && clientMenu;
+    const installed = Boolean(profile && instance?.installed) && modsInstalled >= (profile?.mods.length ?? 0) && clientMenu;
     return {
-      name: KLYMON_CLIENT.name,
-      mcVersion: KLYMON_CLIENT.mcVersion,
-      loaderType: KLYMON_CLIENT.loaderType,
+      name: profile?.name ?? KLYMON_CLIENT.name,
+      mcVersion: instance?.mcVersion ?? KLYMON_CLIENT.mcVersion,
+      loaderType: profile?.loaderType ?? KLYMON_CLIENT.loaderType,
       instanceId: instance?.id ?? null,
       installed,
       phase: this.state?.phase === 'error' ? 'error' : this.state?.phase === 'installing' ? 'installing' : installed ? 'ready' : 'idle',
       message: this.state?.message ?? '',
       progress: this.state?.progress ?? 0,
-      modsExpected: KLYMON_CLIENT.mods.length,
+      modsExpected: profile?.mods.length ?? 0,
       modsInstalled,
       clientMenu,
       error: this.state?.phase === 'error' ? (this.state.error ?? null) : null,
@@ -128,19 +91,21 @@ export class ClientService {
   /** True when the packaged menu mod exists in the instance (or was not shipped). */
   private clientMenuInstalled(instance: InstanceModel | null): boolean {
     if (!instance) return false;
-    if (!this.deps.clientModPath || !existsSync(this.deps.clientModPath)) return true;
-    return existsSync(join(instance.gameDir, 'mods', CLIENT_MOD_FILE));
+    if (!this.deps.clientModDir || !existsSync(join(this.deps.clientModDir, clientModSourceFile(instance.mcVersion)))) return true;
+    return existsSync(join(instance.gameDir, 'mods', INSTALLED_MOD_FILE));
   }
 
-  /** Copies the bundled Fabric menu mod into the instance, when it changed. */
+  /** Copies the version-matched Fabric menu mod into the instance, when it changed. */
   private async installClientMod(instance: InstanceModel): Promise<void> {
-    const source = this.deps.clientModPath;
-    if (!source || !(await pathExists(source))) {
+    if (!this.deps.clientModDir) return;
+    const source = join(this.deps.clientModDir, clientModSourceFile(instance.mcVersion));
+    if (!(await pathExists(source))) {
+      this.deps.logger.warn('client', `No menu mod shipped for Minecraft ${instance.mcVersion}; skipping.`);
       return;
     }
     const folder = join(instance.gameDir, 'mods');
     await mkdir(folder, { recursive: true });
-    const destination = join(folder, CLIENT_MOD_FILE);
+    const destination = join(folder, INSTALLED_MOD_FILE);
     const sourceHash = await sha1File(source);
     const destinationHash = (await pathExists(destination)) ? await sha1File(destination) : null;
     if (sourceHash === destinationHash) return;
@@ -153,10 +118,10 @@ export class ClientService {
    * disk across updates and can hard-fail the loader (a retired slug pinning an
    * older Sodium), which is exactly what "Repair & update" must clean up.
    */
-  private async pruneRetiredMods(instance: InstanceModel): Promise<void> {
+  private async pruneRetiredMods(instance: InstanceModel, profile: KlymonClientProfile): Promise<void> {
     const installed = this.deps.content.installed(instance.id, 'mod');
     if (installed.length === 0) return;
-    for (const slug of KLYMON_CLIENT.retiredSlugs) {
+    for (const slug of profile.retiredSlugs) {
       try {
         const project = await this.modrinth.project(slug);
         for (const entry of installed.filter((item) => item.projectId === project.id)) {
@@ -183,45 +148,55 @@ export class ClientService {
   }
 
   /** Creates the instance when needed and installs (or repairs) the client. */
-  async install(): Promise<ClientStatus> {
+  async install(mcVersion: string = DEFAULT_CLIENT_VERSION): Promise<ClientStatus> {
+    if (!isClientVersion(mcVersion)) {
+      throw new LauncherError('INVALID_INPUT', `Unsupported Klymon Client version "${mcVersion}".`);
+    }
     if (this.run) return this.run;
-    this.run = this.doInstall().finally(() => {
+    this.run = this.doInstall(KLYMON_CLIENTS[mcVersion]).finally(() => {
       this.run = null;
     });
     return this.run;
   }
 
-  private async doInstall(): Promise<ClientStatus> {
+  private async doInstall(profile: KlymonClientProfile): Promise<ClientStatus> {
     this.update({ phase: 'installing', progress: 0.01, message: 'Preparando Klymon Client', error: null });
 
     try {
       let instance = this.findInstance();
       if (!instance) {
         instance = await this.deps.instances.create({
-          name: KLYMON_CLIENT.name,
-          description: KLYMON_CLIENT.description,
-          mcVersion: KLYMON_CLIENT.mcVersion,
-          loaderType: KLYMON_CLIENT.loaderType,
+          name: profile.name,
+          description: profile.description,
+          mcVersion: profile.mcVersion,
+          loaderType: profile.loaderType,
           loaderVersion: null,
-          minMemoryMb: KLYMON_CLIENT.minMemoryMb,
-          maxMemoryMb: KLYMON_CLIENT.maxMemoryMb,
-          jvmArgs: [...KLYMON_CLIENT.jvmArgs],
+          minMemoryMb: profile.minMemoryMb,
+          maxMemoryMb: profile.maxMemoryMb,
+          jvmArgs: [...profile.jvmArgs],
         });
         await this.deps.settings.update({ clientInstanceId: instance.id });
-        this.deps.logger.info('client', `Created ${KLYMON_CLIENT.name} instance ${instance.id}`);
-      } else if (instance.loaderType !== KLYMON_CLIENT.loaderType || instance.mcVersion !== KLYMON_CLIENT.mcVersion) {
+        this.deps.logger.info('client', `Created ${profile.name} instance ${instance.id}`);
+      } else if (instance.loaderType !== profile.loaderType || instance.mcVersion !== profile.mcVersion) {
         instance = await this.deps.instances.update(instance.id, {
-          mcVersion: KLYMON_CLIENT.mcVersion,
-          loaderType: KLYMON_CLIENT.loaderType,
+          mcVersion: profile.mcVersion,
+          loaderType: profile.loaderType,
           loaderVersion: null,
         });
+        // Version switch: old-version jars would crash the new loader, so wipe
+        // every installed mod (worlds and config stay) before the fresh install.
+        this.update({ progress: 0.03, message: `Cambiando a Minecraft ${profile.mcVersion}: limpiando mods` });
+        for (const entry of this.deps.content.installed(instance.id, 'mod')) {
+          await this.deps.content.remove(entry.id);
+        }
+        this.deps.logger.info('client', `Switched client instance to Minecraft ${profile.mcVersion}`);
       }
 
       this.update({ progress: 0.03, message: 'Limpiando mods obsoletos del perfil' });
-      await this.pruneRetiredMods(instance);
+      await this.pruneRetiredMods(instance, profile);
 
       if (!instance.installed) {
-        this.update({ progress: 0.05, message: `Instalando Minecraft ${KLYMON_CLIENT.mcVersion} + Fabric` });
+        this.update({ progress: 0.05, message: `Instalando Minecraft ${profile.mcVersion} + Fabric` });
         await this.deps.game.installInstance(instance.id, {
           onProgress: (progress) => {
             const fraction = progress.total > 0 ? Math.min(1, progress.completed / progress.total) : 0;
@@ -233,8 +208,8 @@ export class ClientService {
         });
       }
 
-      const total = KLYMON_CLIENT.mods.length;
-      for (const [index, mod] of KLYMON_CLIENT.mods.entries()) {
+      const total = profile.mods.length;
+      for (const [index, mod] of profile.mods.entries()) {
         this.update({
           progress: 0.12 + (index / total) * 0.85,
           message: `Instalando ${mod.title} (${index + 1}/${total})`,

@@ -1,0 +1,45 @@
+# Self-hosted production stack (API + Postgres).
+# Coolify users: deploy apps/api/Dockerfile directly instead of this file.
+# Usage: POSTGRES_PASSWORD=... JWT_SECRET=... docker compose -f docker-compose.prod.yml up -d
+services:
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: klymon
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      POSTGRES_DB: klymon
+    volumes:
+      - klymon-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U klymon"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://klymon:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/klymon?schema=public
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET (min 32 chars)}
+      PORT: 3001
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      PUBLIC_WEB_URL: ${PUBLIC_WEB_URL:-https://account.klymon.example}
+      MAIL_FROM: ${MAIL_FROM:-Klymon <no-reply@klymon.example>}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      TRUST_PROXY: ${TRUST_PROXY:-0}
+    ports:
+      - "${API_PORT:-3001}:3001"
+
+volumes:
+  klymon-pgdata:

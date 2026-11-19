@@ -1,5 +1,9 @@
 package com.klymon.clientmenu.config;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -17,6 +21,13 @@ import com.google.gson.JsonSyntaxException;
  * the headless tests cover the same code the game uses.
  */
 public final class ProfileManager {
+    /**
+     * Largest accepted profile-export payload, in bytes on disk / chars in
+     * memory (exports are JSON, so chars conservatively over-count bytes).
+     * Real exports are a few kilobytes; anything bigger is corruption or abuse.
+     */
+    public static final int MAX_EXPORT_BYTES = 1_000_000;
+
     public static final String DEFAULT_PROFILE = "default";
     public static final List<String> BUILTIN_IDS = List.of(
             "default", "pvp", "bedwars", "skywars", "practice", "survival", "performance");
@@ -28,6 +39,18 @@ public final class ProfileManager {
 
     public static Gson gson() {
         return GSON;
+    }
+
+    /**
+     * Writes JSON text to {@code file}, creating parent directories. Callers
+     * decide how to surface the failure — this method never swallows it.
+     */
+    public static void writeJsonFile(Path file, String json) throws IOException {
+        Path parent = file.toAbsolutePath().getParent();
+        if (parent != null) {
+            Files.createDirectories(parent);
+        }
+        Files.writeString(file, json, StandardCharsets.UTF_8);
     }
 
     // ------------------------------------------------------------------ builtins
@@ -183,6 +206,24 @@ public final class ProfileManager {
         return ids;
     }
 
+    /** Number of pages for {@code total} ids at {@code pageSize} per page (always >= 1). */
+    public static int pageCount(int total, int pageSize) {
+        if (pageSize <= 0) {
+            throw new IllegalArgumentException("pageSize must be positive");
+        }
+        return Math.max(1, (Math.max(0, total) + pageSize - 1) / pageSize);
+    }
+
+    /** Window of ids for a 0-based page; out-of-range pages clamp to the nearest one. */
+    public static List<String> page(List<String> ids, int page, int pageSize) {
+        if (ids == null || ids.isEmpty()) {
+            return List.of();
+        }
+        int safe = Math.max(0, Math.min(page, pageCount(ids.size(), pageSize) - 1));
+        int from = safe * pageSize;
+        return new ArrayList<>(ids.subList(from, Math.min(from + pageSize, ids.size())));
+    }
+
     public static String uniqueId(ProfileDocument document, String base) {
         String candidate = ProfileDocument.sanitizeId(base);
         if (!document.profiles.containsKey(candidate)) {
@@ -271,6 +312,10 @@ public final class ProfileManager {
      */
     @SuppressWarnings("unchecked")
     public static Profile parseExport(String json) {
+        if (json != null && json.length() > MAX_EXPORT_BYTES) {
+            throw new IllegalArgumentException(
+                    "Profile export is too large (" + json.length() + " chars, max " + MAX_EXPORT_BYTES + ")");
+        }
         Map<String, Object> payload;
         try {
             payload = GSON.fromJson(json, Map.class);

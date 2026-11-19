@@ -16,6 +16,7 @@ import { AccountsPage } from './pages/AccountsPage';
 import { SkinsPage } from './pages/SkinsPage';
 import { MusicPage } from './pages/MusicPage';
 import { NewsPage } from './pages/NewsPage';
+import { PlatformPage } from './pages/PlatformPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { OnboardingPage } from './pages/OnboardingPage';
 
@@ -54,6 +55,7 @@ function Gate(): React.JSX.Element {
           <Route path="skins" element={<SkinsPage />} />
           <Route path="music" element={<MusicPage />} />
           <Route path="news" element={<NewsPage />} />
+          <Route path="platform" element={<PlatformPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>

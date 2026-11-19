@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Gauge, Gamepad2, Palette, Play, RefreshCw, Rocket, ShieldCheck, Wrench } from 'lucide-react';
 import type { ClientStatus } from '@klymon/shared-types';
+import { DEFAULT_CLIENT_VERSION, KLYMON_CLIENT_VERSIONS } from '@klymon/shared-types';
 import { invoke, useEvent, errorMessage } from '../lib/api';
 import { useApp } from '../lib/app-context';
 import { useI18n } from '../lib/i18n';
@@ -8,6 +9,7 @@ import { Alert, Progress } from './ui/misc';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Card, CardContent } from './ui/card';
+import { Select } from './ui/select';
 
 /** Klymon Client: bundled Fabric profile with curated performance/PvP mods. */
 export function ClientCard(): React.JSX.Element {
@@ -15,6 +17,7 @@ export function ClientCard(): React.JSX.Element {
   const { toast, refreshInstances } = useApp();
   const [status, setStatus] = useState<ClientStatus | null>(null);
   const [busy, setBusy] = useState(false);
+  const [version, setVersion] = useState<string>(DEFAULT_CLIENT_VERSION);
 
   useEffect(() => {
     void invoke('client:status')
@@ -24,10 +27,16 @@ export function ClientCard(): React.JSX.Element {
 
   useEvent('client:progress', (next) => setStatus(next));
 
+  useEffect(() => {
+    if (status && (KLYMON_CLIENT_VERSIONS as readonly string[]).includes(status.mcVersion)) {
+      setVersion(status.mcVersion);
+    }
+  }, [status?.mcVersion]);
+
   const install = async (): Promise<void> => {
     setBusy(true);
     try {
-      const next = await invoke('client:install');
+      const next = await invoke('client:install', { mcVersion: version });
       setStatus(next);
       await refreshInstances();
       toast(t('client.ready'), 'success');
@@ -49,6 +58,7 @@ export function ClientCard(): React.JSX.Element {
   if (!status) return <></>;
 
   const installing = status.phase === 'installing' || busy;
+  const switching = status.installed && version !== status.mcVersion;
 
   return (
     <Card className="relative overflow-hidden border-accent/25">
@@ -95,8 +105,15 @@ export function ClientCard(): React.JSX.Element {
             <Alert variant="error">{t('client.failed')}: {status.error}</Alert>
           ) : null}
 
+          <Select
+            aria-label={t('client.version')}
+            value={version}
+            onValueChange={setVersion}
+            disabled={installing}
+            options={KLYMON_CLIENT_VERSIONS.map((entry) => ({ value: entry, label: `Minecraft ${entry}` }))}
+          />
           <div className="flex gap-2">
-            {status.installed ? (
+            {status.installed && !switching ? (
               <>
                 <Button className="flex-1" onClick={() => void launch()} disabled={installing}>
                   <Play className="size-4" /> {t('client.play')}
@@ -108,7 +125,7 @@ export function ClientCard(): React.JSX.Element {
             ) : (
               <Button className="flex-1" onClick={() => void install()} loading={installing}>
                 {status.phase === 'error' ? <RefreshCw className="size-4" /> : <Rocket className="size-4" />}
-                {status.modsInstalled > 0 ? t('client.repair') : t('client.install')}
+                {switching ? t('client.switch') : status.modsInstalled > 0 ? t('client.repair') : t('client.install')}
               </Button>
             )}
           </div>

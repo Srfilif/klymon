@@ -80,7 +80,10 @@ public final class KeystrokesAddon extends Addon implements HudElement, Tickable
     private record Cell(int key, int x, int y, int width, String label) {
     }
 
-    private List<Cell> cells() {
+    private record Layout(List<Cell> cells, int height) {
+    }
+
+    private Layout layout() {
         int size = this.keySize.getInt();
         int fullWidth = size * 3 + GAP * 2;
         List<Cell> cells = new ArrayList<>();
@@ -111,11 +114,8 @@ public final class KeystrokesAddon extends Addon implements HudElement, Tickable
             cells.add(new Cell(6, half + GAP, y, fullWidth - half - GAP, "RMB"));
             y += size + GAP;
         }
-        this.cachedHeight = cells.isEmpty() ? 0 : y - GAP;
-        return cells;
+        return new Layout(cells, cells.isEmpty() ? 0 : y - GAP);
     }
-
-    private int cachedHeight;
 
     // ------------------------------------------------------------------ HudElement
 
@@ -147,8 +147,7 @@ public final class KeystrokesAddon extends Addon implements HudElement, Tickable
 
     @Override
     public int measureHeight(MinecraftClient client) {
-        cells();
-        return Math.max(1, this.cachedHeight);
+        return Math.max(1, layout().height());
     }
 
     @Override
@@ -156,7 +155,7 @@ public final class KeystrokesAddon extends Addon implements HudElement, Tickable
         boolean[] down = currentDown(client);
         long now = Util.getMeasuringTimeMs();
         TextRenderer font = client.textRenderer;
-        for (Cell cell : cells()) {
+        for (Cell cell : layout().cells()) {
             boolean pressed = down[cell.key()];
             float pop = 0.0f;
             if (this.animation.getBoolean() && this.pressedAt[cell.key()] > 0) {

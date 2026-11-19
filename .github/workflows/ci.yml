@@ -43,11 +43,42 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Dependency audit (high and critical block)
+        run: pnpm audit --audit-level=high
+
       - name: Typecheck
         run: pnpm typecheck
 
       - name: Test
         run: pnpm test
 
+      - name: Generate Prisma client
+        run: pnpm --filter @klymon/api prisma:generate
+
+      - name: API typecheck
+        run: pnpm --filter @klymon/api typecheck
+
+      - name: API unit tests
+        run: pnpm --filter @klymon/api test
+
+      - name: Landing typecheck and build
+        run: pnpm --filter @klymon/landing build
+
+      - name: Dashboard and admin typecheck and build
+        run: pnpm --filter @klymon/dashboard build && pnpm --filter @klymon/admin build
+
       - name: Build app bundles
         run: pnpm build
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Build API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          push: false

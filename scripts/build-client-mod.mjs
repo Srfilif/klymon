@@ -1,17 +1,20 @@
 /**
- * Builds the Klymon Client's Fabric mod (`client-mod/`) and drops the packaged
- * jar into `apps/desktop/resources/client-mod/klymon-menu.jar` so the launcher
- * can install it into the Klymon Client instance.
+ * Builds the Klymon Client's Fabric mod (`client-mod/`) for every supported
+ * Minecraft version and drops the packaged jars into
+ * `apps/desktop/resources/client-mod/klymon-menu-<mc>.jar` so the launcher
+ * can install the matching one into the Klymon Client instance.
  *
  * NOTE: no shebang line on purpose. This module is imported by tests, and a
  * hashbang makes Vitest collection fail with `SyntaxError: Invalid or
  * unexpected token` on older Node runtimes. It is always invoked explicitly
  * (`node scripts/build-client-mod.mjs`), so nothing needs the shebang.
  *
- * The project deliberately avoids Gradle/Loom: the mod is two small classes,
- * and the whole toolchain is `javac` + `tiny-remapper` + the Yarn mappings.
- * Everything is downloaded from Mojang/Fabric on first run and cached in
- * `.tools/`, so later builds are offline and take a couple of seconds.
+ * The project deliberately avoids Gradle/Loom: the whole toolchain is `javac`
+ * + `tiny-remapper` + the Yarn mappings. Every artifact is version-pinned
+ * with a SHA-256 in TOOLCHAIN_SHA256 (the Mojang client jar is verified
+ * against its manifest SHA-1 instead), downloaded from Mojang/Fabric on
+ * first run and cached per version in `.tools/`, so later builds are offline
+ * and take a couple of seconds.
  *
  * Usage: node scripts/build-client-mod.mjs
  * Requires a Java 21 JDK (`JAVA_HOME` or `javac` on PATH).
@@ -27,10 +30,14 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const tools = join(root, '.tools');
 const modDir = join(root, 'client-mod');
 const buildDir = join(modDir, 'build');
-const classesDir = join(buildDir, 'classes');
 const resourcesOut = join(root, 'apps', 'desktop', 'resources', 'client-mod');
 
-const MC_VERSION = '1.21.1';
+// One toolchain + jar per supported Minecraft version (M5 multiversion).
+// Exported so tests iterate the same matrix instead of duplicating literals.
+export const CLIENT_VERSIONS = [
+  { mc: '1.21.1', yarn: '1.21.1+build.3' },
+  { mc: '1.21', yarn: '1.21+build.9' },
+];
 const LOADER_VERSION = '0.20.1';
 const TINY_REMAPPER_VERSION = '0.15.0';
 const BRIGADIER_VERSION = '1.3.10';
@@ -45,6 +52,27 @@ const FABRIC_API_MODULES = {
   'fabric-lifecycle-events-v1': '2.6.0+0865547519',
   'fabric-key-binding-api-v1': '1.0.47+0af3f5a719',
   'fabric-rendering-v1': '5.2.1+f44c2eea19',
+};
+
+// SHA-256 of every pinned toolchain artifact, keyed by its `.tools/` file name.
+// Verified against upstream `.sha1` metadata on 2026-11-17; re-verify from the
+// repository metadata (never from a local cache) when bumping a version.
+// Exported so tests verify independently fetched copies of the same artifacts.
+export const TOOLCHAIN_SHA256 = {
+  'tiny-remapper.jar': 'ca93f562ab05daea928c7b89a355188c068d6154c9f7f485e8704dbaf35bfd44',
+  'yarn-1.21.1+build.3.jar': '4ec570889585cb958b7d3c9dd94ce4064b16ab797dffec152bc8486c59a4010b',
+  'intermediary-1.21.1.jar': 'e8bd6a4c39e235ee2dc73063558610775c72a2572fa0c6b32915b149074012a6',
+  'yarn-1.21+build.9.jar': 'fcbf14c2d0ebd05f54db90333d14cc1cefbbd2f75fecbe7b32a082eb2fb505cb',
+  'intermediary-1.21.jar': '5567849f76f552ec3dac68bbb1da92d345e588bc28416cc176bfb9dda1bfd1ec',
+  [`fabric-loader-${LOADER_VERSION}.jar`]: 'd0c5a082e07410aaff9de7ab196aa6b4236002870f9ba3ad5c1260fcce5110ad',
+  [`brigadier-${BRIGADIER_VERSION}.jar`]: 'c8ee4136e474ac7723ca2b432ec8d1a2bc88ef7d1ec57c314ba9e33cdc83dd75',
+  [`slf4j-api-${SLF4J_VERSION}.jar`]: '0818930dc8d7debb403204611691da58e49d42c50b6ffcfdce02dadb7c3c2b6c',
+  [`gson-${GSON_VERSION}.jar`]: '57928d6e5a6edeb2abd3770a8f95ba44dce45f3b23b7a9dc2b309c581552a78b',
+  [`joml-${JOML_VERSION}.jar`]: 'cac9f22f83a7aa33eebda73c16ff5261e3cb4911b6bafcf4c79ea486099d0c9a',
+  'fabric-api-base.jar': '19d690593bd291861f1310d1d056c341ff049761eaf04e8c4ece2ae4f1e603b6',
+  'fabric-lifecycle-events-v1.jar': '7b5b443e459a1af8819b47896f5decd127a101ad7694ad6363b64390f1316198',
+  'fabric-key-binding-api-v1.jar': 'd0c5194a6720b3ca4fd9c2c789a11b5e4a5a9a9e4965d3cbfa11141eb2664049',
+  'fabric-rendering-v1.jar': '10fdcbbb48ab2ab49051e7f168cf8a752cc048ec0200b694249e2ff02e5378f9',
 };
 
 const log = (message) => console.log(`[client-mod] ${message}`);
@@ -70,13 +98,29 @@ function jdkTool(name) {
   fail(`${name} was not found. Install a Java 21 JDK or set JAVA_HOME.`);
 }
 
+function hashOf(path, algorithm) {
+  return createHash(algorithm).update(readFileSync(path)).digest('hex');
+}
+
 async function download(url, destination) {
-  if (existsSync(destination) && statSync(destination).size > 0) return destination;
-  log(`downloading ${basename(destination)}`);
+  const expected = TOOLCHAIN_SHA256[basename(destination)];
+  if (expected === undefined) fail(`no pinned hash for ${basename(destination)}; refusing to download an unpinned artifact`);
+  const cached = existsSync(destination) && statSync(destination).size > 0;
+  if (cached && hashOf(destination, 'sha256') === expected) return destination;
+  if (cached) {
+    log(`cached ${basename(destination)} failed hash verification, re-downloading`);
+    rmSync(destination, { force: true });
+  } else {
+    log(`downloading ${basename(destination)}`);
+  }
   const response = await fetch(url, { redirect: 'follow' });
   if (!response.ok) fail(`GET ${url} returned ${response.status}`);
   mkdirSync(dirname(destination), { recursive: true });
   writeFileSync(destination, Buffer.from(await response.arrayBuffer()));
+  if (hashOf(destination, 'sha256') !== expected) {
+    rmSync(destination, { force: true });
+    fail(`${basename(destination)} sha256 mismatch after download. Refusing to build from an untrusted artifact.`);
+  }
   return destination;
 }
 
@@ -134,7 +178,7 @@ function removeFresh(path) {
   }
 }
 
-async function ensureToolchain() {
+async function ensureToolchain(mcVersion, yarnVersion) {
   mkdirSync(tools, { recursive: true });
 
   await download(
@@ -142,37 +186,50 @@ async function ensureToolchain() {
     join(tools, 'tiny-remapper.jar'),
   );
 
-  const yarnMappings = join(tools, 'yarn.tiny');
+  // Every derived file is namespaced per version: the file name is the cache
+  // key, so a warm cache can never mix another version's mappings or jars.
+  const yarnMappings = join(tools, `yarn-${yarnVersion}.tiny`);
+  const yarnJar = await download(
+    `https://maven.fabricmc.net/net/fabricmc/yarn/${yarnVersion}/yarn-${yarnVersion}-v2.jar`,
+    join(tools, `yarn-${yarnVersion}.jar`),
+  );
   if (!existsSync(yarnMappings)) {
-    const builds = await fetchJson(`https://meta.fabricmc.net/v2/versions/yarn/${MC_VERSION}`);
-    const version = builds?.[0]?.version;
-    if (!version) fail(`Fabric meta returned no Yarn build for ${MC_VERSION}`);
-    const jar = await download(
-      `https://maven.fabricmc.net/net/fabricmc/yarn/${version}/yarn-${version}-v2.jar`,
-      join(tools, `yarn-${version}.jar`),
-    );
-    extractEntry(jar, 'mappings/mappings.tiny', yarnMappings);
+    extractEntry(yarnJar, 'mappings/mappings.tiny', yarnMappings);
   }
 
-  const intermediaryMappings = join(tools, 'intermediary.tiny');
+  const intermediaryMappings = join(tools, `intermediary-${mcVersion}.tiny`);
   if (!existsSync(intermediaryMappings)) {
     const jar = await download(
-      `https://maven.fabricmc.net/net/fabricmc/intermediary/${MC_VERSION}/intermediary-${MC_VERSION}-v2.jar`,
-      join(tools, `intermediary-${MC_VERSION}.jar`),
+      `https://maven.fabricmc.net/net/fabricmc/intermediary/${mcVersion}/intermediary-${mcVersion}-v2.jar`,
+      join(tools, `intermediary-${mcVersion}.jar`),
     );
     extractEntry(jar, 'mappings/mappings.tiny', intermediaryMappings);
   }
 
   // Named Minecraft jar: official → intermediary → Yarn names.
-  const official = join(tools, 'client-official.jar');
-  const intermediary = join(tools, 'mc-intermediary.jar');
-  const named = join(tools, 'mc-named.jar');
+  const official = join(tools, `client-official-${mcVersion}.jar`);
+  const intermediary = join(tools, `mc-intermediary-${mcVersion}.jar`);
+  const named = join(tools, `mc-named-${mcVersion}.jar`);
   if (!existsSync(intermediary)) {
     const manifest = await fetchJson('https://piston-meta.mojang.com/mc/game/version_manifest_v2.json');
-    const entry = manifest.versions.find((version) => version.id === MC_VERSION);
-    if (!entry) fail(`Minecraft ${MC_VERSION} is missing from the version manifest`);
+    const entry = manifest.versions.find((version) => version.id === mcVersion);
+    if (!entry) fail(`Minecraft ${mcVersion} is missing from the version manifest`);
     const details = await fetchJson(entry.url);
-    await download(details.downloads.client.url, official);
+    const client = details.downloads?.client;
+    if (!client?.url || !client?.sha1) fail(`version details for ${mcVersion} carry no client download hash`);
+    // The official jar is not in TOOLCHAIN_SHA256 (its hash ships inside the
+    // Mojang manifest instead of a Maven `.sha1`), so verify it explicitly.
+    if (!existsSync(official) || hashOf(official, 'sha1') !== client.sha1) {
+      rmSync(official, { force: true });
+      log(`downloading client-official-${mcVersion}.jar`);
+      const response = await fetch(client.url, { redirect: 'follow' });
+      if (!response.ok) fail(`GET ${client.url} returned ${response.status}`);
+      writeFileSync(official, Buffer.from(await response.arrayBuffer()));
+      if (hashOf(official, 'sha1') !== client.sha1) {
+        rmSync(official, { force: true });
+        fail('client-official sha1 mismatch. Refusing to build from an untrusted artifact.');
+      }
+    }
     remap(official, intermediary, intermediaryMappings, 'official', 'intermediary', []);
   }
   remap(intermediary, named, yarnMappings, 'intermediary', 'named', [intermediary]);
@@ -204,7 +261,7 @@ async function ensureToolchain() {
       `https://maven.fabricmc.net/net/fabricmc/fabric-api/${module}/${version}/${module}-${version}.jar`,
       join(tools, `${module}.jar`),
     );
-    const moduleNamed = join(tools, `${module}-named.jar`);
+    const moduleNamed = join(tools, `${module}-named-${mcVersion}.jar`);
     remap(plain, moduleNamed, yarnMappings, 'intermediary', 'named', [named]);
     fabricApi.push(moduleNamed);
   }
@@ -212,11 +269,12 @@ async function ensureToolchain() {
   return { named, loaderJar, brigadierJar, slf4jJar, gsonJar, jomlJar, fabricApi, yarnMappings };
 }
 
-async function main() {
+async function buildOne(mcVersion, yarnVersion) {
   const metadata = JSON.parse(readFileSync(join(modDir, 'src', 'main', 'resources', 'fabric.mod.json'), 'utf8'));
-  log(`building ${metadata.id} ${metadata.version} for Minecraft ${MC_VERSION}`);
-  const toolchain = await ensureToolchain();
+  log(`building ${metadata.id} ${metadata.version} for Minecraft ${mcVersion}`);
+  const toolchain = await ensureToolchain(mcVersion, yarnVersion);
 
+  const classesDir = join(buildDir, `classes-${mcVersion}`);
   rmSync(classesDir, { recursive: true, force: true });
   mkdirSync(classesDir, { recursive: true });
 
@@ -226,23 +284,26 @@ async function main() {
   run(
     jdkTool('javac'),
     ['--release', '21', '-d', classesDir, '-cp', classpath.join(delimiter), ...sources],
-    `compiling ${sources.length} source file(s)`,
+    `compiling ${sources.length} source file(s) for ${mcVersion}`,
   );
 
-  // Resources (fabric.mod.json, lang files, …) ride along with the classes.
+  // Resources (lang files, …) ride along with the classes; fabric.mod.json is
+  // generated per version so the loader pins each jar to its own Minecraft.
   const resources = join(modDir, 'src', 'main', 'resources');
   for (const file of walk(resources, '')) {
     const destination = join(classesDir, relative(resources, file));
     mkdirSync(dirname(destination), { recursive: true });
     copyFileSync(file, destination);
   }
+  const stagedMetadata = { ...metadata, depends: { ...metadata.depends, minecraft: `~${mcVersion}` } };
+  writeFileSync(join(classesDir, 'fabric.mod.json'), JSON.stringify(stagedMetadata, null, 2));
 
-  const namedJar = removeFresh(join(buildDir, 'klymon-menu-named.jar'));
+  const namedJar = removeFresh(join(buildDir, `klymon-menu-named-${mcVersion}.jar`));
   run(jdkTool('jar'), ['--create', '--file', namedJar, '-C', classesDir, '.'], 'packaging classes');
 
   // `remap` caches by output path (toolchain jars never change); the mod itself
   // must be rebuilt every time, so drop the previous result first.
-  const outputJar = removeFresh(join(buildDir, 'klymon-menu.jar'));
+  const outputJar = removeFresh(join(buildDir, `klymon-menu-${mcVersion}.jar`));
   remap(namedJar, outputJar, toolchain.yarnMappings, 'named', 'intermediary', classpath);
 
   // Sanity check: the published jar must reference intermediary names only.
@@ -260,11 +321,19 @@ async function main() {
   }
 
   mkdirSync(resourcesOut, { recursive: true });
-  const shipped = join(resourcesOut, 'klymon-menu.jar');
+  const shipped = join(resourcesOut, `klymon-menu-${mcVersion}.jar`);
   copyFileSync(outputJar, shipped);
 
   const sha1 = createHash('sha1').update(readFileSync(shipped)).digest('hex');
   log(`built ${relative(root, shipped)} (${statSync(shipped).size} bytes, sha1 ${sha1})`);
+}
+
+async function main() {
+  for (const { mc, yarn } of CLIENT_VERSIONS) {
+    await buildOne(mc, yarn);
+  }
+  // Legacy single-version artifact: the launcher now resolves per-version jars.
+  rmSync(join(resourcesOut, 'klymon-menu.jar'), { force: true });
 }
 
 // Importing this module (e.g. from tests) must not trigger a build.

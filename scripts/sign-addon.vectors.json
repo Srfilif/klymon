@@ -1,0 +1,11 @@
+{
+  "addonId": "vector-addon",
+  "version": "1.2.0",
+  "sha256": "abababababababababababababababababababababababababababababababab",
+  "fileSize": 12345,
+  "payload": "klymon-addon-v1\nvector-addon\n1.2.0\nabababababababababababababababababababababababababababababababab\n12345\n",
+  "publicKey": "43rZ7j5-tp81Iaj1lmuQBFowWwC4v-B_n1qqJG9HoGI",
+  "privateKey": "t6p5Ne_xHoa4L6uqaWxNtTaZifAS2aLJiZaU6ExJ3KE",
+  "fingerprint": "cc58cd660adb6336f5b3f0c4ec6c10a098b6cec11dc41617cc795aed043971cb",
+  "signature": "Ad6XjR8R16LIhh-OUjCxXVwg_WJj0qC0uQcgNEvpUgYjB-dxbeNmlcpN6x4YLDZB_Kea2hpZnbNLbyQViptXAQ"
+}

@@ -99,6 +99,48 @@ export const MIGRATIONS: Migration[] = [
       );
     `,
   },
+  {
+    id: '0003_content_pins',
+    sql: `
+      ALTER TABLE installed_content ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0;
+    `,
+  },
+  {
+    id: '0004_cloud_sync',
+    sql: `
+      CREATE TABLE IF NOT EXISTS sync_docs (
+        profile_id TEXT NOT NULL, namespace TEXT NOT NULL,
+        content TEXT NOT NULL DEFAULT '{}', base_version INTEGER,
+        dirty INTEGER NOT NULL DEFAULT 0, conflict TEXT,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (profile_id, namespace)
+      );
+      CREATE TABLE IF NOT EXISTS sync_lkg (
+        profile_id TEXT NOT NULL, namespace TEXT NOT NULL,
+        content TEXT NOT NULL, version INTEGER NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (profile_id, namespace)
+      );
+      CREATE TABLE IF NOT EXISTS sync_queue (
+        id TEXT PRIMARY KEY, profile_id TEXT NOT NULL, namespace TEXT NOT NULL,
+        content TEXT NOT NULL, base_version INTEGER,
+        force INTEGER NOT NULL DEFAULT 0, enqueued_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS sync_queue_order_idx ON sync_queue (profile_id, namespace, enqueued_at);
+    `,
+  },
+  {
+    id: '0005_platform_session',
+    sql: `
+      CREATE TABLE IF NOT EXISTS platform_session (
+        id TEXT PRIMARY KEY CHECK (id = 'current'),
+        refresh_enc TEXT NOT NULL,
+        username TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    `,
+  },
 ];
 
 export function runMigrations(sqlite: Database.Database): void {

@@ -1,7 +1,6 @@
 package com.klymon.clientmenu;
 
 import java.io.Reader;
-import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -216,16 +215,28 @@ public final class KlymonConfig {
         active.hud = this.hud.exportStates();
     }
 
-    public synchronized void save() {
+    private String lastSaveError;
+
+    /**
+     * Persists the config. Returns false (and records {@link #lastSaveError()})
+     * instead of silently dropping the write when persistence fails.
+     */
+    public synchronized boolean save() {
         syncToDocument();
         try {
-            Files.createDirectories(FILE.getParent());
-            try (Writer writer = Files.newBufferedWriter(FILE, StandardCharsets.UTF_8)) {
-                ProfileManager.gson().toJson(this.document, writer);
-            }
+            ProfileManager.writeJsonFile(FILE, ProfileManager.gson().toJson(this.document));
+            this.lastSaveError = null;
+            return true;
         } catch (Exception error) {
+            this.lastSaveError = FILE + ": " + error.getMessage();
             KlymonMenuClient.LOGGER.warn("Could not write {}: {}", FILE, error.getMessage());
+            return false;
         }
+    }
+
+    /** Human-readable detail of the last failed save, or null when the last save succeeded. */
+    public synchronized String lastSaveError() {
+        return this.lastSaveError;
     }
 
     private static KlymonConfig load() {

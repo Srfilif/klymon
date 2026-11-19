@@ -1,11 +1,16 @@
 name: Release
 
-# Windows distribution pipeline (Klymon Launcher ships NSIS x64 installers):
-# - pushes to main -> gates + package + downloadable build artifact (public
+# Distribution pipeline (Klymon Launcher ships installers for three OSes):
+# - pushes to main -> gates + packages + downloadable build artifacts (public
 #   releases are never created per commit)
-# - tags vX.Y.Z    -> gates + package + published stable GitHub Release
+# - tags vX.Y.Z    -> gates + packages + published stable GitHub Release
 # - tags vX.Y.Z-*  -> same, but published as a pre-release
-# - manual runs    -> gates + package + artifact, never publishes
+# - manual runs    -> gates + packages + artifacts, never publishes
+#
+# Signing: electron-builder signs automatically when certificate secrets exist
+# (WIN_CSC_LINK/WIN_CSC_KEY_PASSWORD, CSC_LINK/CSC_KEY_PASSWORD, APPLE_ID /
+# APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID). Without them the pipeline
+# produces unsigned builds; see docs/CI-CD.md "Firma de releases".
 on:
   push:
     branches: [main]
@@ -55,11 +60,24 @@ jobs:
       - name: Build app bundles
         run: pnpm build
 
+      - name: Signing status
+        shell: pwsh
+        run: |
+          if ($env:WIN_CSC_LINK -or $env:CSC_LINK) { 'Windows signing: enabled' } else { 'Windows signing: unsigned build (no certificate secrets)' }
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+
       # Same flags as `pnpm package:win` minus its redundant rebuild: the
       # bundles above are reused. Output lands in release/.
       - name: Package NSIS installer
         working-directory: apps/desktop
         run: pnpm exec electron-builder --win nsis --config electron-builder.yml --publish never
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
 
       # The installer and the electron-updater metadata must all exist;
       # a partial set never reaches artifacts or releases.
@@ -85,9 +103,128 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  build-linux:
+    name: Build Linux packages
+    # Pinned to 22.04: the AppImage tooling needs libfuse2, gone from 24.04.
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v5
+        with:
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install rpm tooling
+        run: sudo apt-get update && sudo apt-get install -y rpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build app bundles
+        run: pnpm build
+
+      # Same flags as `pnpm package:linux` minus its redundant rebuild.
+      - name: Package AppImage/deb/rpm
+        working-directory: apps/desktop
+        run: pnpm exec electron-builder --linux --config electron-builder.yml --publish never
+
+      - name: Validate artifacts
+        shell: bash
+        run: |
+          shopt -s nullglob
+          appimages=(release/*.AppImage)
+          debs=(release/*.deb)
+          rpms=(release/*.rpm)
+          if [ "${#appimages[@]}" -eq 0 ]; then echo 'No .AppImage found in release/' >&2; exit 1; fi
+          if [ "${#debs[@]}" -eq 0 ]; then echo 'No .deb found in release/' >&2; exit 1; fi
+          if [ "${#rpms[@]}" -eq 0 ]; then echo 'No .rpm found in release/' >&2; exit 1; fi
+          if [ ! -f release/latest-linux.yml ]; then echo 'latest-linux.yml (auto-update metadata) is missing' >&2; exit 1; fi
+          ls -la release/*.AppImage release/*.deb release/*.rpm release/latest-linux.yml
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: klymon-linux-packages-${{ github.run_number }}-${{ github.sha }}
+          path: |
+            release/*.AppImage
+            release/*.deb
+            release/*.rpm
+            release/latest-linux.yml
+          if-no-files-found: error
+          retention-days: 14
+
+  build-macos:
+    name: Build macOS disk images
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v5
+        with:
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build app bundles
+        run: pnpm build
+
+      - name: Signing status
+        shell: bash
+        run: |
+          if [ -n "$CSC_LINK" ]; then echo 'macOS signing: enabled'; else echo 'macOS signing: unsigned build (no certificate secrets)'; fi
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+
+      # Same flags as `pnpm package:mac` minus its redundant rebuild.
+      - name: Package DMGs (x64 + arm64)
+        working-directory: apps/desktop
+        run: pnpm exec electron-builder --mac --config electron-builder.yml --publish never
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      - name: Validate artifacts
+        shell: bash
+        run: |
+          shopt -s nullglob
+          dmgs=(release/*.dmg)
+          if [ "${#dmgs[@]}" -eq 0 ]; then echo 'No .dmg found in release/' >&2; exit 1; fi
+          if [ ! -f release/latest-mac.yml ]; then echo 'latest-mac.yml (auto-update metadata) is missing' >&2; exit 1; fi
+          ls -la release/*.dmg release/latest-mac.yml
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: klymon-macos-installers-${{ github.run_number }}-${{ github.sha }}
+          path: |
+            release/*.dmg
+            release/latest-mac.yml
+          if-no-files-found: error
+          retention-days: 14
+
   release:
     name: Publish GitHub Release
-    needs: build-windows
+    needs: [build-windows, build-linux, build-macos]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
@@ -101,10 +238,22 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Download installer artifact
+      - name: Download Windows artifact
         uses: actions/download-artifact@v4
         with:
           name: klymon-windows-installer-${{ github.run_number }}-${{ github.sha }}
+          path: dist
+
+      - name: Download Linux artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: klymon-linux-packages-${{ github.run_number }}-${{ github.sha }}
+          path: dist
+
+      - name: Download macOS artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: klymon-macos-installers-${{ github.run_number }}-${{ github.sha }}
           path: dist
 
       - name: List artifacts
@@ -121,6 +270,12 @@ jobs:
             echo 'dist/ is empty, refusing to publish' >&2
             exit 1
           fi
+          for meta in latest.yml latest-linux.yml latest-mac.yml; do
+            if [ ! -f "dist/$meta" ]; then
+              echo "dist/$meta is missing, refusing to publish" >&2
+              exit 1
+            fi
+          done
           echo "Publishing ${#files[@]} file(s)."
 
       # Stable tags (v1.0.0) publish stable releases; hyphenated tags

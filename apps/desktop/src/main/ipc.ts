@@ -18,6 +18,7 @@ import { javaComponentForMajor } from '@klymon/java-manager';
 import { requiredJavaMajor } from '@klymon/version-manager';
 import type { AppContext } from './services/context';
 import type { UpdaterService } from './services/updater';
+import { buildOnboardingActivity } from './services/onboarding-funnel';
 import { IPC_SCHEMAS } from './ipc-schemas';
 
 const ALLOWED_ORIGINS = ['app://bundle', 'http://localhost:5199'];
@@ -291,8 +292,8 @@ export function registerIpcHandlers(context: AppContext, updater: UpdaterService
     void shell.openPath(instance.gameDir);
   });
   handle('client:status', () => context.client.status());
-  handle('client:install', async () => {
-    const status = await context.client.install();
+  handle('client:install', async (payload) => {
+    const status = await context.client.install(payload?.mcVersion);
     context.emit('data:changed', { scope: 'instances' });
     context.emit('data:changed', { scope: 'content' });
     context.emit('data:changed', { scope: 'settings' });
@@ -353,6 +354,7 @@ export function registerIpcHandlers(context: AppContext, updater: UpdaterService
     context.emit('data:changed', { scope: 'content' });
   });
   handle('content:toggle', ({ id, enabled }) => context.content.toggle(id, enabled));
+  handle('content:pin', ({ id, pinned }) => context.content.setPinned(id, pinned));
   handle('content:import-file', async ({ instanceId, kind }) => {
     const picked = await showOpenDialog({
       title: 'Import file',
@@ -471,6 +473,17 @@ export function registerIpcHandlers(context: AppContext, updater: UpdaterService
       kind: entry.kind as import('@klymon/shared-types').ActivityEntry['kind'],
     })),
   );
+  handle('onboarding:event', ({ step, action }) => {
+    const event = buildOnboardingActivity(step, action);
+    context.repos.activity.add({
+      id: crypto.randomUUID(),
+      kind: event.kind,
+      instanceId: null,
+      message: event.message,
+      detail: null,
+      createdAt: new Date().toISOString(),
+    });
+  });
 
   // ── Servers ────────────────────────────────────────────────────────────────
   handle('servers:list', () => context.repos.servers.list());
@@ -536,4 +549,17 @@ export function registerIpcHandlers(context: AppContext, updater: UpdaterService
   handle('progression:claim-daily', () => context.progression.claimDaily());
   handle('progression:set-title', ({ titleId }) => context.progression.setTitle(titleId));
   handle('progression:session', () => context.game.liveSession());
+
+  handle('platform:status', () => context.platform.status());
+  handle('platform:login', ({ identifier, password }) => context.platform.login(identifier, password));
+  handle('platform:register', ({ username, email, password }) => context.platform.register(username, email, password));
+  handle('platform:logout', () => context.platform.logout());
+
+  handle('sync:status', () => context.sync.status());
+  handle('sync:profiles', () => context.sync.profiles());
+  handle('sync:select-profile', ({ profileId }) => context.sync.selectProfile(profileId));
+  handle('sync:push', ({ namespace }) => context.sync.push(namespace));
+  handle('sync:pull', () => context.sync.pull());
+  handle('sync:resolve', ({ namespace, keep }) => context.sync.resolve(namespace, keep));
+  handle('sync:revert', ({ namespace }) => context.sync.revert(namespace));
 }

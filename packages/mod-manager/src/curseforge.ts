@@ -150,12 +150,9 @@ export class CurseForgeClient {
   }
 
   mapFile(file: CurseForgeFile, projectId: string): ContentVersion {
-    if (!file.downloadUrl) {
-      throw new LauncherError(
-        'FORBIDDEN',
-        `The author of "${file.displayName}" disabled third-party downloads. Download it from CurseForge and import the file manually.`,
-      );
-    }
+    // Author-blocked files are marked, never thrown: one blocked file must not
+    // kill the whole versions list. Install paths refuse them explicitly.
+    const blocked = !file.downloadUrl;
     const dependencies = (file.dependencies ?? []).map((dependency) => ({
       projectId: String(dependency.modId),
       versionId: null,
@@ -170,7 +167,11 @@ export class CurseForgeClient {
       versionNumber: file.displayName,
       gameVersions: file.gameVersions.filter((version) => !version.includes('Java')),
       loaders: (file.modLoaders ?? []).map((loader) => loader.id.replace(/-\d+$/, '')),
-      downloadUrl: file.downloadUrl,
+      downloadUrl: file.downloadUrl ?? null,
+      blocked,
+      blockedReason: blocked
+        ? `The author of "${file.displayName}" disabled third-party downloads. Download it from CurseForge and import the file manually.`
+        : null,
       fileName: file.fileName,
       fileSize: file.fileLength,
       hashes: sha1 ? { sha1 } : {},

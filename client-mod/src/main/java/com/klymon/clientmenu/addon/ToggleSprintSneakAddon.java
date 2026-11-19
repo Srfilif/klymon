@@ -10,6 +10,7 @@ import com.klymon.clientmenu.hud.HudElement;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.DrawContext;
+import net.minecraft.text.Text;
 
 /**
  * Toggle sprint and toggle sneak with independent options and on-screen state
@@ -103,10 +104,10 @@ public final class ToggleSprintSneakAddon extends Addon implements HudElement, T
             return lines;
         }
         if (this.sneakLatch) {
-            lines.add("Sneak ON");
+            lines.add(Text.translatable("klymon.hud.sneakOn").getString());
         }
         if (sprintActive(client) && client.options.forwardKey.isPressed()) {
-            lines.add("Sprint ON");
+            lines.add(Text.translatable("klymon.hud.sprintOn").getString());
         }
         return lines;
     }

@@ -1,0 +1,314 @@
+// Klymon API database. Identity foundation (M4): users + sessions.
+// Later milestones extend this file (wallets, inventory, addons, …) — always
+// through `prisma migrate`, never by editing a shipped migration.
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                 String                   @id @default(uuid()) @db.Uuid
+  username           String                   @unique @db.VarChar(20)
+  email              String                   @unique @db.VarChar(320)
+  passwordHash       String                   @db.VarChar(255)
+  emailVerifiedAt    DateTime?
+  bio                String?                  @db.VarChar(280)
+  role               String                   @default("user") @db.VarChar(16)
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
+  sessions           Session[]
+  devices            Device[]
+  minecraft          MinecraftAccount[]
+  emailTokens        EmailVerificationToken[]
+  resetTokens        PasswordResetToken[]
+  wallet             Wallet?
+  cosmetics          UserCosmetic[]
+  loadout            Loadout?
+  addons             Addon[]
+  cloudProfiles      CloudProfile[]
+  handoffCodes       HandoffCode[]
+  deviceCodes        DeviceCode[]
+  addonPublisherKeys AddonPublisherKey[]
+
+  @@map("users")
+}
+
+model Session {
+  id            String    @id @default(uuid()) @db.Uuid
+  userId        String    @db.Uuid
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // SHA-256 of the opaque refresh token (the token itself never lands in the DB).
+  refreshHash   String    @unique
+  userAgent     String?   @db.VarChar(512)
+  ip            String?   @db.VarChar(64)
+  createdAt     DateTime  @default(now())
+  expiresAt     DateTime
+  revokedAt     DateTime?
+  // Session this one was rotated into (reuse of a rotated token revokes the family).
+  replacedBy    String?   @db.Uuid
+  // True for Minecraft-client sessions minted via handoff exchange (short refresh TTL, preserved on rotation).
+  clientSession Boolean   @default(false)
+  deviceId      String?   @db.Uuid
+  device        Device?   @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model Device {
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @db.Uuid
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fingerprint String    @db.VarChar(64)
+  userAgent   String?   @db.VarChar(512)
+  ip          String?   @db.VarChar(64)
+  createdAt   DateTime  @default(now())
+  lastSeenAt  DateTime  @default(now())
+  revokedAt   DateTime?
+  sessions    Session[]
+
+  @@unique([userId, fingerprint])
+  @@map("devices")
+}
+
+model EmailVerificationToken {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @db.Uuid
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  createdAt  DateTime  @default(now())
+  consumedAt DateTime?
+
+  @@index([userId])
+  @@map("email_verification_tokens")
+}
+
+model PasswordResetToken {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @db.Uuid
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String    @unique
+  expiresAt  DateTime  @default(now())
+  createdAt  DateTime  @default(now())
+  consumedAt DateTime?
+
+  @@index([userId])
+  @@map("password_reset_tokens")
+}
+
+model MinecraftAccount {
+  id             String    @id @default(uuid()) @db.Uuid
+  userId         String    @db.Uuid
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  uuid           String    @unique @db.VarChar(36)
+  username       String    @db.VarChar(16)
+  verifiedAt     DateTime?
+  propertiesJson String?   @db.Text
+  lastSyncedAt   DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@index([userId])
+  @@map("minecraft_accounts")
+}
+
+model Wallet {
+  id        String              @id @default(uuid()) @db.Uuid
+  userId    String              @unique @db.Uuid
+  user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  balance   Int                 @default(0)
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+  entries   WalletTransaction[]
+
+  @@map("wallets")
+}
+
+model WalletTransaction {
+  id           String   @id @default(uuid()) @db.Uuid
+  walletId     String   @db.Uuid
+  wallet       Wallet   @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  amount       Int
+  type         String   @db.VarChar(16)
+  reason       String?  @db.VarChar(280)
+  reference    String?  @db.VarChar(128)
+  balanceAfter Int
+  createdAt    DateTime @default(now())
+
+  @@index([walletId])
+  @@map("wallet_transactions")
+}
+
+model Cosmetic {
+  id          String         @id @db.VarChar(64)
+  name        String         @db.VarChar(80)
+  slot        String         @db.VarChar(16)
+  rarity      String         @db.VarChar(16)
+  price       Int            @default(0)
+  description String?        @db.VarChar(280)
+  createdAt   DateTime       @default(now())
+  owners      UserCosmetic[]
+
+  @@map("cosmetics")
+}
+
+model UserCosmetic {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @db.Uuid
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cosmeticId String   @db.VarChar(64)
+  cosmetic   Cosmetic @relation(fields: [cosmeticId], references: [id], onDelete: Restrict)
+  source     String   @db.VarChar(16)
+  createdAt  DateTime @default(now())
+
+  @@unique([userId, cosmeticId])
+  @@index([userId])
+  @@map("user_cosmetics")
+}
+
+model Loadout {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @unique @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  equipped  Json     @default("{}")
+  updatedAt DateTime @updatedAt
+
+  @@map("loadouts")
+}
+
+model Addon {
+  id          String         @id @db.VarChar(64)
+  name        String         @db.VarChar(80)
+  summary     String         @db.VarChar(280)
+  description String?        @db.Text
+  authorId    String         @db.Uuid
+  author      User           @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  visibility  String         @default("draft") @db.VarChar(16)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  versions    AddonVersion[]
+
+  @@index([authorId])
+  @@map("addons")
+}
+
+model AddonVersion {
+  id                String   @id @default(uuid()) @db.Uuid
+  addonId           String   @db.VarChar(64)
+  addon             Addon    @relation(fields: [addonId], references: [id], onDelete: Cascade)
+  version           String   @db.VarChar(32)
+  mcVersions        String[]
+  loaders           String[]
+  dependencies      Json     @default("[]")
+  downloadUrl       String   @db.VarChar(2048)
+  sha256            String   @db.VarChar(64)
+  fileSize          Int
+  changelog         String?  @db.Text
+  createdAt         DateTime @default(now())
+  // Author Ed25519 signature (base64url, 64 bytes) + signer fingerprint, if signed.
+  signature         String?  @db.VarChar(128)
+  signerFingerprint String?  @db.VarChar(64)
+  // Declared runtime capabilities (review surface; the jar manifest is authoritative at load).
+  capabilities      String[] @default([])
+
+  @@unique([addonId, version])
+  @@index([addonId])
+  @@map("addon_versions")
+}
+
+model AddonPublisherKey {
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @db.Uuid
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String    @db.VarChar(40)
+  // Raw 32-byte Ed25519 public key, base64url (43 chars).
+  publicKey   String    @db.VarChar(64)
+  // sha256 hex of the raw key; shown to users, used to pick the key.
+  fingerprint String    @unique @db.VarChar(64)
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([userId])
+  @@map("addon_publisher_keys")
+}
+
+model CloudProfile {
+  id        String          @id @default(uuid()) @db.Uuid
+  userId    String          @db.Uuid
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String          @db.VarChar(40)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  documents CloudDocument[]
+
+  @@unique([userId, name])
+  @@index([userId])
+  @@map("cloud_profiles")
+}
+
+model CloudDocument {
+  id        String                 @id @default(uuid()) @db.Uuid
+  profileId String                 @db.Uuid
+  profile   CloudProfile           @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  namespace String                 @db.VarChar(32)
+  version   Int                    @default(1)
+  content   Json                   @default("{}")
+  updatedBy String?                @db.VarChar(160)
+  updatedAt DateTime               @updatedAt
+  history   CloudDocumentVersion[]
+
+  @@unique([profileId, namespace])
+  @@index([profileId])
+  @@map("cloud_documents")
+}
+
+model CloudDocumentVersion {
+  id         String        @id @default(uuid()) @db.Uuid
+  documentId String        @db.Uuid
+  document   CloudDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  version    Int
+  content    Json
+  updatedBy  String?       @db.VarChar(160)
+  createdAt  DateTime      @default(now())
+
+  @@unique([documentId, version])
+  @@index([documentId])
+  @@map("cloud_document_versions")
+}
+
+model HandoffCode {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Source launcher session (audit only; plain, survives rotation).
+  sessionId String?   @db.Uuid
+  codeHash  String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@map("handoff_codes")
+}
+
+model DeviceCode {
+  id             String    @id @default(uuid()) @db.Uuid
+  deviceCodeHash String    @unique
+  userCodeHash   String    @unique
+  // Approver, set on approve (the code itself is the authority to approve).
+  userId         String?   @db.Uuid
+  user           User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clientName     String?   @db.VarChar(80)
+  status         String    @default("pending") @db.VarChar(16)
+  expiresAt      DateTime
+  decidedAt      DateTime?
+  lastPollAt     DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@index([userId])
+  @@map("device_codes")
+}

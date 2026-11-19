@@ -1,23 +1,25 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { unzipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
-import { KLYMON_CLIENT, CLIENT_MOD_FILE } from '../apps/desktop/src/main/services/client';
-import { GSON_VERSION } from '../scripts/build-client-mod.mjs';
+import { KLYMON_CLIENTS, KLYMON_CLIENT_VERSIONS, clientModSourceFile } from '@klymon/shared-types';
+import { GSON_VERSION, TOOLCHAIN_SHA256 } from '../scripts/build-client-mod.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
-const clientModJar = join(root, 'apps', 'desktop', 'resources', 'client-mod', CLIENT_MOD_FILE);
 const clientModDir = join(root, 'client-mod');
 
-function jarEntries() {
-  return unzipSync(readFileSync(clientModJar));
+function jarEntries(mcVersion: string = KLYMON_CLIENTS['1.21.1'].mcVersion) {
+  return unzipSync(readFileSync(join(root, 'apps', 'desktop', 'resources', 'client-mod', clientModSourceFile(mcVersion))));
 }
 
 describe('Klymon Client addon system', () => {
   it('ships every addon, screen and framework class', () => {
-    const classes = Object.keys(jarEntries()).filter((name) => name.endsWith('.class'));
+    const classes = KLYMON_CLIENT_VERSIONS.flatMap((mcVersion) =>
+      Object.keys(jarEntries(mcVersion)).filter((name) => name.endsWith('.class')),
+    );
     for (const name of [
       // PvP
       'KeystrokesAddon',
@@ -50,6 +52,9 @@ describe('Klymon Client addon system', () => {
       'ProfileManager',
       'CpsTracker',
       'ComboTracker',
+      'BoundedCache',
+      'HurtEdge',
+      'GammaPolicy',
       'LevelCurve',
       // Progression + cosmetics
       'KlymonBridge',
@@ -73,9 +78,11 @@ describe('Klymon Client addon system', () => {
   });
 
   it('ships Gson-free: Gson stays a compile-only dependency', () => {
-    const entries = Object.keys(jarEntries());
-    expect(entries.some((name) => name.startsWith('com/google/gson'))).toBe(false);
-    expect(entries.some((name) => name.startsWith('org/joml'))).toBe(false);
+    for (const mcVersion of KLYMON_CLIENT_VERSIONS) {
+      const entries = Object.keys(jarEntries(mcVersion));
+      expect(entries.some((name) => name.startsWith('com/google/gson'))).toBe(false);
+      expect(entries.some((name) => name.startsWith('org/joml'))).toBe(false);
+    }
   });
 
   it('has a name, description and settings labels for every addon id', () => {
@@ -135,6 +142,15 @@ describe('Klymon Client addon system', () => {
       expect(es[key]).toBeTruthy();
       expect(en[key]).toBeTruthy();
     }
+    // HUD labels rendered by addons (must never fall back to hardcoded English).
+    for (const key of [
+      'klymon.hud.sneakOn',
+      'klymon.hud.sprintOn',
+      'klymon.hud.pointsShort',
+    ]) {
+      expect(es[key]).toBeTruthy();
+      expect(en[key]).toBeTruthy();
+    }
     // Categories, editor, profiles and anchors.
     for (const key of [
       'klymon.category.pvp',
@@ -158,29 +174,73 @@ describe('Klymon Client addon system', () => {
   });
 
   it('versions the mod metadata for the addon release', () => {
-    const entries = jarEntries();
-    const metadata = JSON.parse(new TextDecoder().decode(entries['fabric.mod.json']));
-    expect(metadata.version).toBe('1.3.0');
+    for (const mcVersion of KLYMON_CLIENT_VERSIONS) {
+      const entries = jarEntries(mcVersion);
+      const metadata = JSON.parse(new TextDecoder().decode(entries['fabric.mod.json']));
+      expect(metadata.version).toBe('1.4.0');
+      expect(metadata.depends.minecraft).toBe(`~${mcVersion}`);
+    }
     const source = JSON.parse(readFileSync(join(clientModDir, 'src', 'main', 'resources', 'fabric.mod.json'), 'utf8'));
-    expect(source.version).toBe(metadata.version);
+    expect(source.version).toBe('1.4.0');
   });
 });
 
 describe('Klymon Client performance bundle', () => {
   it('installs More Culling and retires the superseded toggle mod', () => {
-    const slugs = KLYMON_CLIENT.mods.map((mod) => mod.slug);
-    expect(slugs).toContain('moreculling');
-    expect(slugs).not.toContain('toggle-sprint');
-    expect(KLYMON_CLIENT.retiredSlugs as readonly string[]).toContain('toggle-sprint');
+    for (const mcVersion of KLYMON_CLIENT_VERSIONS) {
+      const profile = KLYMON_CLIENTS[mcVersion];
+      const slugs = profile.mods.map((mod) => mod.slug);
+      expect(slugs).toContain('moreculling');
+      expect(slugs).not.toContain('toggle-sprint');
+      expect(profile.retiredSlugs as readonly string[]).toContain('toggle-sprint');
+    }
   });
 
   it('keeps ModernFix out of the auto-installed bundle (documented, still listed in game)', () => {
-    const slugs = KLYMON_CLIENT.mods.map((mod) => mod.slug);
-    expect(slugs).not.toContain('modernfix');
+    for (const mcVersion of KLYMON_CLIENT_VERSIONS) {
+      const slugs = KLYMON_CLIENTS[mcVersion].mods.map((mod) => mod.slug);
+      expect(slugs).not.toContain('modernfix');
+    }
     const entries = jarEntries();
     const en = JSON.parse(new TextDecoder().decode(entries['assets/klymon-menu/lang/en_us.json']));
     expect(en['klymon.addon.modernfix']).toBeTruthy();
     expect(en['klymon.addon.modernfix.desc']).toBeTruthy();
+  });
+});
+
+describe('Klymon Client network allowlist (R4.1)', () => {
+  it('confines network I/O to the platform client plus the ping read', () => {
+    const roots = [join(clientModDir, 'src', 'main', 'java')];
+    const files: string[] = [];
+    for (const dir of roots) {
+      for (const entry of readdirSync(dir, { recursive: true, withFileTypes: true })) {
+        if (entry.isFile() && entry.name.endsWith('.java')) files.push(join(entry.parentPath, entry.name));
+      }
+    }
+    expect(files.length).toBeGreaterThan(40);
+    // token -> files allowed to contain it (R4.1, amended by ADR-025).
+    const allowlist: Record<string, string[]> = {
+      HttpClient: ['platform/JdkPlatformHttp.java'],
+      HttpRequest: ['platform/JdkPlatformHttp.java'],
+      HttpResponse: ['platform/JdkPlatformHttp.java'],
+      HttpURLConnection: [],
+      Socket: [],
+      WebSocket: [],
+      'URL(': [],
+      openConnection: [],
+      getLatency: ['addon/FpsPingAddon.java'],
+    };
+    const violations: string[] = [];
+    for (const file of files) {
+      const rel = (file.split(`clientmenu${sep}`).pop() ?? file).split(sep).join('/');
+      const text = readFileSync(file, 'utf8');
+      for (const [token, allowed] of Object.entries(allowlist)) {
+        if (text.includes(token) && !allowed.some((suffix) => rel.endsWith(suffix))) {
+          violations.push(`${rel}: ${token}`);
+        }
+      }
+    }
+    expect(violations).toEqual([]);
   });
 });
 
@@ -203,17 +263,45 @@ describe('Klymon Client addon logic (headless Java)', () => {
       'src/main/java/com/klymon/clientmenu/hud/HudAnchor.java',
       'src/main/java/com/klymon/clientmenu/logic/CpsTracker.java',
       'src/main/java/com/klymon/clientmenu/logic/ComboTracker.java',
+      'src/main/java/com/klymon/clientmenu/logic/BoundedCache.java',
+      'src/main/java/com/klymon/clientmenu/logic/HurtEdge.java',
+      'src/main/java/com/klymon/clientmenu/logic/GammaPolicy.java',
       'src/main/java/com/klymon/clientmenu/logic/LevelCurve.java',
       'src/main/java/com/klymon/clientmenu/logic/SessionAccumulator.java',
       'src/main/java/com/klymon/clientmenu/config/ProfileDocument.java',
       'src/main/java/com/klymon/clientmenu/config/ProfileManager.java',
+      'src/main/java/com/klymon/clientmenu/platform/HandoffOffer.java',
+      'src/main/java/com/klymon/clientmenu/platform/PlatformUrls.java',
+      'src/main/java/com/klymon/clientmenu/platform/PlatformSession.java',
+      'src/main/java/com/klymon/clientmenu/platform/PlatformSessionStore.java',
+      'src/main/java/com/klymon/clientmenu/platform/PlatformHttp.java',
+      'src/main/java/com/klymon/clientmenu/platform/JdkPlatformHttp.java',
+      'src/main/java/com/klymon/clientmenu/platform/HandoffExchange.java',
+      'src/main/java/com/klymon/clientmenu/platform/DeviceLink.java',
+      'src/main/java/com/klymon/clientmenu/platform/ApiBaseStore.java',
+      'src/main/java/com/klymon/clientmenu/thirdparty/api/HudAddon.java',
+      'src/main/java/com/klymon/clientmenu/thirdparty/api/TickAddon.java',
+      'src/main/java/com/klymon/clientmenu/thirdparty/api/ConfigurableAddon.java',
+      'src/main/java/com/klymon/clientmenu/thirdparty/api/TickState.java',
+      'src/main/java/com/klymon/clientmenu/thirdparty/api/HudCanvas.java',
+      'src/main/java/com/klymon/clientmenu/thirdparty/sandbox/ClassPolicy.java',
+      'src/main/java/com/klymon/clientmenu/thirdparty/sandbox/ConstantPool.java',
+      'src/main/java/com/klymon/clientmenu/thirdparty/sandbox/SandboxClassLoader.java',
+      'src/main/java/com/klymon/clientmenu/thirdparty/sandbox/AddonManifest.java',
+      'src/main/java/com/klymon/clientmenu/thirdparty/sandbox/AddonSandbox.java',
+      'src/test/java/fixtures/addons/CleanHudAddon.java',
+      'src/test/java/fixtures/addons/MultiAddon.java',
+      'src/test/java/fixtures/addons/MeanAddon.java',
+      'src/test/java/fixtures/addons/SneakyAddon.java',
+      'src/test/java/fixtures/addons/ConfigEchoAddon.java',
+      'src/test/java/fixtures/addons/HandleSneakAddon.java',
       'src/test/java/com/klymon/clientmenu/LogicTest.java',
     ].map((relative) => join(clientModDir, relative));
     for (const source of sources) {
       expect(existsSync(source)).toBe(true);
     }
     execFileSync(javac as string, ['--release', '21', '-d', outDir, '-cp', gson, ...sources], { stdio: 'pipe' });
-    const output = execFileSync(java as string, ['-cp', `${outDir}${pathDelimiter()}${gson}`, 'com.klymon.clientmenu.LogicTest'], {
+    const output = execFileSync(java as string, ['-cp', `${outDir}${pathDelimiter()}${gson}`, 'com.klymon.clientmenu.LogicTest', outDir], {
       encoding: 'utf8',
       stdio: 'pipe',
     });
@@ -231,7 +319,10 @@ describe('Klymon Client addon logic (headless Java)', () => {
  */
 async function ensureGsonJar(): Promise<string> {
   const jar = join(root, '.tools', `gson-${GSON_VERSION}.jar`);
-  if (isUsableJar(jar)) return jar;
+  const expected = TOOLCHAIN_SHA256[`gson-${GSON_VERSION}.jar`];
+  if (!expected) throw new Error(`no pinned hash for gson ${GSON_VERSION}; refusing an unpinned artifact`);
+  if (isUsableJar(jar, expected)) return jar;
+  rmSync(jar, { force: true });
   mkdirSync(join(root, '.tools'), { recursive: true });
   const url = `https://repo1.maven.org/maven2/com/google/code/gson/gson/${GSON_VERSION}/gson-${GSON_VERSION}.jar`;
   let lastError = 'unknown error';
@@ -242,6 +333,9 @@ async function ensureGsonJar(): Promise<string> {
       const bytes = Buffer.from(await response.arrayBuffer());
       if (bytes.length < 2 || bytes[0] !== 0x50 || bytes[1] !== 0x4b) {
         throw new Error('downloaded gson jar is not a zip archive (missing PK header)');
+      }
+      if (createHash('sha256').update(bytes).digest('hex') !== expected) {
+        throw new Error('downloaded gson jar failed pinned-hash verification');
       }
       writeFileSync(jar, bytes);
       return jar;
@@ -254,11 +348,13 @@ async function ensureGsonJar(): Promise<string> {
   throw new Error(`Could not fetch gson ${GSON_VERSION} from Maven Central: ${lastError}`);
 }
 
-function isUsableJar(path: string): boolean {
+function isUsableJar(path: string, expectedSha256?: string): boolean {
   try {
     if (!existsSync(path) || statSync(path).size === 0) return false;
-    const header = readFileSync(path).subarray(0, 2);
-    return header.length === 2 && header[0] === 0x50 && header[1] === 0x4b;
+    const bytes = readFileSync(path);
+    const header = bytes.subarray(0, 2);
+    if (header.length !== 2 || header[0] !== 0x50 || header[1] !== 0x4b) return false;
+    return expectedSha256 === undefined || createHash('sha256').update(bytes).digest('hex') === expectedSha256;
   } catch {
     return false;
   }

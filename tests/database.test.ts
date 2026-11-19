@@ -127,6 +127,7 @@ describe('SQLite persistence', () => {
       installedAt: now,
       sha1: 'deadbeef',
       sourceUrl: 'https://cdn.modrinth.com/data/abc/sodium.jar',
+      pinned: false,
     });
 
     expect(instances.list()).toHaveLength(2);

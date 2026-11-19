@@ -1,6 +1,7 @@
 package com.klymon.clientmenu;
 
 import com.klymon.clientmenu.cosmetic.KlymonBridge;
+import com.klymon.clientmenu.platform.PlatformLink;
 
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
@@ -141,6 +142,12 @@ public final class KlymonTitleScreen extends Screen {
             context.drawTextWithShadow(this.textRenderer,
                     Text.translatable("klymon.title.footer", KlymonMenuClient.gameVersion(), KlymonMenuClient.loaderVersion()),
                     this.panelX + 22, footerY + 12, KlymonTheme.alpha(KlymonTheme.MUTED, 0xB0));
+            String linked = PlatformLink.username();
+            Text linkStatus = linked == null
+                    ? Text.translatable("klymon.title.unlinked")
+                    : Text.translatable("klymon.title.linked", linked);
+            context.drawTextWithShadow(this.textRenderer, linkStatus,
+                    this.panelX + 22, footerY + 24, KlymonTheme.alpha(KlymonTheme.MUTED, 0xB0));
         }
     }
 

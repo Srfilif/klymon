@@ -11,10 +11,12 @@ import {
   ContentRepository,
   InstanceRepository,
   MusicRepository,
+  PlatformSessionRepository,
   ProgressionRepository,
   ServerRepository,
   SettingsRepository,
   SkinRepository,
+  SyncRepository,
   type DatabaseHandle,
 } from '@klymon/database';
 import { DownloadManager } from '@klymon/download-manager';
@@ -23,16 +25,18 @@ import { VersionInstaller, VersionManifestService, requiredJavaMajor } from '@kl
 import { JavaManager } from '@klymon/java-manager';
 import { InstanceManager } from '@klymon/instance-manager';
 import { ModloaderManager } from '@klymon/modloader-manager';
-import { ContentManager } from '@klymon/mod-manager';
+import { ContentManager, ModrinthClient } from '@klymon/mod-manager';
 import { SkinManager } from '@klymon/skin-manager';
 import { PerformanceManager } from '@klymon/performance-manager';
 import { MusicManager } from '@klymon/music-manager';
 import type { IpcEventMap, IpcEventName, MinecraftVersionSummary, VersionType } from '@klymon/shared-types';
 import { SafeSecretStore } from './secrets';
+import { PlatformAuthService } from './platform';
 import { SettingsService } from './settings';
+import { SyncService } from './sync';
 import { AccountService } from './accounts';
 import { GameService } from './game';
-import { ClientService, CLIENT_MOD_FILE } from './client';
+import { ClientService } from './client';
 import { CrashService } from './crash';
 import { NewsService } from './news';
 import { ProgressionService } from './progression';
@@ -71,9 +75,13 @@ export interface AppContext {
     music: MusicRepository;
     cache: CacheRepository;
     progression: ProgressionRepository;
+    platformSession: PlatformSessionRepository;
+    sync: SyncRepository;
   };
   secretsAvailable: boolean;
   settings: SettingsService;
+  platform: PlatformAuthService;
+  sync: SyncService;
   auth: MicrosoftAuthService;
   accounts: AccountService;
   downloads: DownloadManager;
@@ -130,6 +138,8 @@ export async function createAppContext(options: {
     music: new MusicRepository(db.db),
     cache: new CacheRepository(db.db),
     progression: new ProgressionRepository(db.db, () => sealSecret),
+    platformSession: new PlatformSessionRepository(db.db),
+    sync: new SyncRepository(db.db),
   };
 
   const secrets = new SafeSecretStore();
@@ -238,6 +248,14 @@ export async function createAppContext(options: {
     },
   });
 
+  const platform = new PlatformAuthService({
+    settings: settingsService,
+    secrets,
+    sessions: repos.platformSession,
+    logger,
+    launcherVersion: APP_VERSION,
+  });
+
   const game = new GameService({
     paths,
     logger,
@@ -252,6 +270,7 @@ export async function createAppContext(options: {
     settings: settingsService,
     crash,
     progression,
+    platform,
     launcherVersion: APP_VERSION,
     emit: (event, payload) => {
       if (event === 'launch:state') broadcast('launch:state', payload as IpcEventMap['launch:state']);
@@ -260,18 +279,39 @@ export async function createAppContext(options: {
     },
   });
 
+  const sync = new SyncService({
+    platform,
+    settings: settingsService,
+    progression: repos.progression,
+    sync: repos.sync,
+    logger,
+    clientGameDir: () => {
+      const storedId = settingsService.get().clientInstanceId;
+      if (storedId) {
+        try {
+          return instances.get(storedId).gameDir;
+        } catch {
+          // Fall through to the name lookup below.
+        }
+      }
+      const found = instances.list().find((instance) => instance.name === 'Klymon Client');
+      return found?.gameDir ?? null;
+    },
+  });
+
   const client = new ClientService({
     settings: settingsService,
     instances,
     content: contentManager,
     game,
+    modrinth: new ModrinthClient(),
     progression,
     logger,
-    // Dev builds read the resource straight from the repo; packaged builds get
-    // it through electron-builder's `extraResources`.
-    clientModPath: app.isPackaged
-      ? join(process.resourcesPath, 'client-mod', CLIENT_MOD_FILE)
-      : join(__dirname, '../../resources/client-mod', CLIENT_MOD_FILE),
+    // Dev builds read the resources straight from the repo; packaged builds get
+    // them through electron-builder's `extraResources`.
+    clientModDir: app.isPackaged
+      ? join(process.resourcesPath, 'client-mod')
+      : join(__dirname, '../../resources/client-mod'),
     emit: (status) => broadcast('client:progress', status),
   });
 
@@ -309,6 +349,8 @@ export async function createAppContext(options: {
     repos,
     secretsAvailable: secrets.available,
     settings: settingsService,
+    platform,
+    sync,
     auth,
     accounts,
     downloads,

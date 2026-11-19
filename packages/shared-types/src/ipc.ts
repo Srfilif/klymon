@@ -19,18 +19,24 @@ import type {
   LedgerEntryModel,
   LiveSessionModel,
   LoaderType,
+  OnboardingFunnelAction,
   LoaderVersionOption,
   LogLine,
   MemoryAdvice,
   MinecraftVersionSummary,
   MusicTrack,
   NewsItem,
+  PlatformStatusModel,
   Playlist,
   ProgressionProfileModel,
   QuestStateModel,
   RewardEvent,
   Settings,
   SkinRecord,
+  SyncDocStatusModel,
+  SyncProfileModel,
+  SyncPullResultModel,
+  SyncPushResultModel,
   SystemInfo,
   DiagnosticIssue,
   UpdateStatus,
@@ -104,6 +110,7 @@ export const IPC_CHANNELS = [
   'content:installed',
   'content:remove',
   'content:toggle',
+  'content:pin',
   'content:import-file',
   'content:install-modpack',
   'content:export-mrpack',
@@ -130,6 +137,7 @@ export const IPC_CHANNELS = [
   'update:install',
   'update:status',
   'activity:list',
+  'onboarding:event',
   'servers:list',
   'servers:add',
   'servers:remove',
@@ -156,6 +164,17 @@ export const IPC_CHANNELS = [
   'progression:claim-daily',
   'progression:set-title',
   'progression:session',
+  'platform:status',
+  'platform:login',
+  'platform:register',
+  'platform:logout',
+  'sync:status',
+  'sync:profiles',
+  'sync:select-profile',
+  'sync:push',
+  'sync:pull',
+  'sync:resolve',
+  'sync:revert',
 ] as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[number];
@@ -262,7 +281,7 @@ export interface IpcContract {
   'crash:diagnose': { req: { instanceId: z.infer<typeof zInstanceId> }; res: CrashDiagnosis };
   'crash:open': { req: { instanceId: z.infer<typeof zInstanceId>; target: 'logs' | 'report' }; res: void };
   'client:status': { req: void; res: ClientStatus };
-  'client:install': { req: void; res: ClientStatus };
+  'client:install': { req: { mcVersion?: string }; res: ClientStatus };
   'client:launch': { req: void; res: { pid: number } };
   'loaders:versions': { req: { loaderType: z.infer<typeof zLoaderType>; mcVersion: z.infer<typeof zMinecraftVersionId> }; res: LoaderVersionOption[] };
   'loaders:install': { req: { instanceId: z.infer<typeof zInstanceId>; loaderType: z.infer<typeof zLoaderType>; loaderVersion?: string | null }; res: VersionInstallResult };
@@ -272,6 +291,7 @@ export interface IpcContract {
   'content:installed': { req: { instanceId: z.infer<typeof zInstanceId>; kind?: 'mod' | 'resourcepack' | 'shader' | 'modpack' }; res: InstalledContent[] };
   'content:remove': { req: { id: string }; res: void };
   'content:toggle': { req: { id: string; enabled: boolean }; res: InstalledContent };
+  'content:pin': { req: { id: string; pinned: boolean }; res: InstalledContent };
   'content:import-file': { req: { instanceId: z.infer<typeof zInstanceId>; kind: 'mod' | 'resourcepack' | 'shader' }; res: InstalledContent | null };
   'content:install-modpack': { req: { source: ContentSource; projectId: string; versionId?: string | null; name?: string }; res: { instanceId: string; name: string; files: number; skipped: number } };
   'content:export-mrpack': { req: { instanceId: z.infer<typeof zInstanceId> }; res: string };
@@ -298,6 +318,7 @@ export interface IpcContract {
   'update:install': { req: void; res: void };
   'update:status': { req: void; res: UpdateStatus };
   'activity:list': { req: { limit?: number }; res: ActivityEntry[] };
+  'onboarding:event': { req: { step: number; action: OnboardingFunnelAction }; res: void };
   'servers:list': { req: void; res: ServerRecord[] };
   'servers:add': { req: { name: string; address: string; instanceId?: string | null }; res: ServerRecord };
   'servers:remove': { req: { id: string }; res: void };
@@ -324,6 +345,17 @@ export interface IpcContract {
   'progression:claim-daily': { req: void; res: { profile: ProgressionProfileModel; daily: DailyStateModel } };
   'progression:set-title': { req: { titleId: string | null }; res: ProgressionProfileModel };
   'progression:session': { req: void; res: LiveSessionModel };
+  'platform:status': { req: void; res: PlatformStatusModel };
+  'platform:login': { req: { identifier: string; password: string }; res: { username: string } };
+  'platform:register': { req: { username: string; email: string; password: string }; res: { username: string } };
+  'platform:logout': { req: void; res: void };
+  'sync:status': { req: void; res: SyncDocStatusModel[] };
+  'sync:profiles': { req: void; res: SyncProfileModel[] };
+  'sync:select-profile': { req: { profileId: string | null }; res: Settings };
+  'sync:push': { req: { namespace: string }; res: SyncPushResultModel };
+  'sync:pull': { req: void; res: SyncPullResultModel[] };
+  'sync:resolve': { req: { namespace: string; keep: 'mine' | 'theirs' }; res: SyncPushResultModel };
+  'sync:revert': { req: { namespace: string }; res: { namespace: string; reverted: boolean } };
 }
 
 export interface InstallProgressEvent {

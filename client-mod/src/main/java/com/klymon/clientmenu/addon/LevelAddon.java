@@ -26,7 +26,8 @@ public final class LevelAddon extends Addon implements HudElement {
         KlymonBridge bridge = KlymonBridge.get();
         String shortLevel = Text.translatable("klymon.level.short").getString();
         return this.showPoints.getBoolean()
-                ? shortLevel + " " + bridge.level() + " · " + bridge.balance() + " pts"
+                ? shortLevel + " " + bridge.level() + " · " + bridge.balance() + " "
+                        + Text.translatable("klymon.hud.pointsShort").getString()
                 : Text.translatable("klymon.profile.level").getString() + " " + bridge.level();
     }
 

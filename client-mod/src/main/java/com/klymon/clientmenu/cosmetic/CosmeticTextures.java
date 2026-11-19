@@ -1,8 +1,10 @@
 package com.klymon.clientmenu.cosmetic;
 
+import java.util.Collections;
 import java.util.Locale;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+
+import com.klymon.clientmenu.logic.BoundedCache;
 
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.texture.NativeImage;
@@ -17,7 +19,23 @@ import net.minecraft.util.Identifier;
  * <p>Must be touched on the render thread (feature renderers qualify).</p>
  */
 public final class CosmeticTextures {
-    private static final Map<String, Identifier> CACHE = new ConcurrentHashMap<>();
+    /** Cap for procedural textures; hand-edited bridge files cannot grow it past this. */
+    static final int MAX_TEXTURES = 64;
+
+    private record Entry(Identifier id, boolean registered) {
+    }
+
+    private static final Map<String, Entry> CACHE = Collections.synchronizedMap(
+            new BoundedCache<>(MAX_TEXTURES, (key, entry) -> {
+                if (!entry.registered()) {
+                    return;
+                }
+                try {
+                    MinecraftClient.getInstance().getTextureManager().destroyTexture(entry.id());
+                } catch (Exception ignored) {
+                    // Best effort: evicted textures release GPU memory when possible.
+                }
+            }));
 
     private CosmeticTextures() {
     }
@@ -25,7 +43,7 @@ public final class CosmeticTextures {
     /** Vertical gradient texture, cached per color pair. */
     public static Identifier gradient(String topHex, String bottomHex) {
         String key = "gradient/" + norm(topHex) + "/" + norm(bottomHex);
-        return CACHE.computeIfAbsent(key, ignored -> register(key, (image, width, height) -> {
+        return cached(key, (image, width, height) -> {
             int top = KlymonBridge.parseColor(topHex, 0xFF22D3EE);
             int bottom = KlymonBridge.parseColor(bottomHex, top);
             for (int y = 0; y < height; y++) {
@@ -35,20 +53,20 @@ public final class CosmeticTextures {
                     image.setColor(x, y, toAbgr(mixed));
                 }
             }
-        }));
+        });
     }
 
     /** Solid texture, cached per color. */
     public static Identifier solid(String hex) {
         String key = "solid/" + norm(hex);
-        return CACHE.computeIfAbsent(key, ignored -> register(key, (image, width, height) -> {
+        return cached(key, (image, width, height) -> {
             int color = toAbgr(KlymonBridge.parseColor(hex, 0xFF22D3EE));
             for (int y = 0; y < height; y++) {
                 for (int x = 0; x < width; x++) {
                     image.setColor(x, y, color);
                 }
             }
-        }));
+        });
     }
 
     private static String norm(String hex) {
@@ -62,7 +80,11 @@ public final class CosmeticTextures {
         void paint(NativeImage image, int width, int height);
     }
 
-    private static Identifier register(String key, Painter painter) {
+    private static Identifier cached(String key, Painter painter) {
+        return CACHE.computeIfAbsent(key, ignored -> register(key, painter)).id();
+    }
+
+    private static Entry register(String key, Painter painter) {
         Identifier id = Identifier.of("klymon-menu", "dynamic/" + key);
         try {
             MinecraftClient client = MinecraftClient.getInstance();
@@ -73,11 +95,12 @@ public final class CosmeticTextures {
             NativeImageBackedTexture texture = new NativeImageBackedTexture(image);
             texture.upload();
             client.getTextureManager().registerTexture(id, texture);
+            return new Entry(id, true);
         } catch (Exception ignored) {
             // Texture creation failed (headless test, closed client): callers
             // fall back to a solid debug layer when the id is unusable.
         }
-        return id;
+        return new Entry(id, false);
     }
 
     private static int mix(int topArgb, int bottomArgb, float t) {

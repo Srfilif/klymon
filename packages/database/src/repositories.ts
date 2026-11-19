@@ -12,12 +12,16 @@ import {
   instancesTable,
   playlistsTable,
   playlistTracksTable,
+  platformSessionTable,
   pointsLedgerTable,
   progressionProfileTable,
   questProgressTable,
   serversTable,
   settingsTable,
   skinsTable,
+  syncDocsTable,
+  syncLkgTable,
+  syncQueueTable,
   tracksTable,
   versionInstallationsTable,
   type AccountRecord,
@@ -29,12 +33,16 @@ import {
   type DailyClaimRow,
   type InstanceRow,
   type LauncherDatabase,
+  type PlatformSessionRow,
   type PlaylistRow,
   type PointsLedgerRow,
   type ProgressionProfileRow,
   type QuestProgressRow,
   type ServerRow,
   type SkinRow,
+  type SyncDocRow,
+  type SyncLkgRow,
+  type SyncQueueRow,
   type TrackRow,
   type VersionInstallationRow,
 } from './schema';
@@ -177,6 +185,10 @@ export class ContentRepository {
 
   setEnabled(id: string, enabled: boolean): void {
     this.db.update(contentTable).set({ enabled }).where(eq(contentTable.id, id)).run();
+  }
+
+  setPinned(id: string, pinned: boolean): void {
+    this.db.update(contentTable).set({ pinned }).where(eq(contentTable.id, id)).run();
   }
 
   setPath(id: string, path: string, fileName: string): void {
@@ -513,5 +525,106 @@ export class ProgressionRepository {
 
   recordDailyClaim(row: DailyClaimRow): void {
     this.db.insert(dailyClaimsTable).values(row).onConflictDoNothing().run();
+  }
+}
+
+export class SyncRepository {
+  constructor(private readonly db: LauncherDatabase) {}
+
+  getDoc(profileId: string, namespace: string): SyncDocRow | null {
+    const rows = this.db
+      .select()
+      .from(syncDocsTable)
+      .where(and(eq(syncDocsTable.profileId, profileId), eq(syncDocsTable.namespace, namespace)))
+      .all();
+    return rows[0] ?? null;
+  }
+
+  listDocs(profileId: string): SyncDocRow[] {
+    return this.db.select().from(syncDocsTable).where(eq(syncDocsTable.profileId, profileId)).all();
+  }
+
+  saveDoc(row: SyncDocRow): void {
+    this.db
+      .insert(syncDocsTable)
+      .values(row)
+      .onConflictDoUpdate({
+        target: [syncDocsTable.profileId, syncDocsTable.namespace],
+        set: { content: row.content, baseVersion: row.baseVersion, dirty: row.dirty, conflict: row.conflict, updatedAt: row.updatedAt },
+      })
+      .run();
+  }
+
+  getLkg(profileId: string, namespace: string): SyncLkgRow | null {
+    const rows = this.db
+      .select()
+      .from(syncLkgTable)
+      .where(and(eq(syncLkgTable.profileId, profileId), eq(syncLkgTable.namespace, namespace)))
+      .all();
+    return rows[0] ?? null;
+  }
+
+  saveLkg(row: SyncLkgRow): void {
+    this.db
+      .insert(syncLkgTable)
+      .values(row)
+      .onConflictDoUpdate({
+        target: [syncLkgTable.profileId, syncLkgTable.namespace],
+        set: { content: row.content, version: row.version, updatedAt: row.updatedAt },
+      })
+      .run();
+  }
+
+  /** Latest write wins: pushes are full-document, so one queued op per doc suffices. */
+  enqueue(row: SyncQueueRow): void {
+    this.db
+      .delete(syncQueueTable)
+      .where(and(eq(syncQueueTable.profileId, row.profileId), eq(syncQueueTable.namespace, row.namespace)))
+      .run();
+    this.db.insert(syncQueueTable).values(row).run();
+  }
+
+  listQueue(profileId: string): SyncQueueRow[] {
+    return this.db
+      .select()
+      .from(syncQueueTable)
+      .where(eq(syncQueueTable.profileId, profileId))
+      .orderBy(asc(syncQueueTable.enqueuedAt))
+      .all();
+  }
+
+  dropQueued(id: string): void {
+    this.db.delete(syncQueueTable).where(eq(syncQueueTable.id, id)).run();
+  }
+
+  clearQueued(profileId: string, namespace: string): void {
+    this.db
+      .delete(syncQueueTable)
+      .where(and(eq(syncQueueTable.profileId, profileId), eq(syncQueueTable.namespace, namespace)))
+      .run();
+  }
+}
+
+export class PlatformSessionRepository {
+  constructor(private readonly db: LauncherDatabase) {}
+
+  load(): PlatformSessionRow | null {
+    const rows = this.db.select().from(platformSessionTable).where(eq(platformSessionTable.id, 'current')).all();
+    return rows[0] ?? null;
+  }
+
+  save(row: Omit<PlatformSessionRow, 'id' | 'updatedAt'>): void {
+    this.db
+      .insert(platformSessionTable)
+      .values({ ...row, id: 'current', updatedAt: new Date().toISOString() })
+      .onConflictDoUpdate({
+        target: platformSessionTable.id,
+        set: { refreshEnc: row.refreshEnc, username: row.username, userId: row.userId, updatedAt: new Date().toISOString() },
+      })
+      .run();
+  }
+
+  clear(): void {
+    this.db.delete(platformSessionTable).where(eq(platformSessionTable.id, 'current')).run();
   }
 }

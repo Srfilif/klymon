@@ -54,6 +54,8 @@ export interface ContentManagerOptions {
     gameDir: string;
   }>;
   curseforgeApiKey: () => string | null;
+  /** Test seam: production always uses the real API clients. */
+  clients?: { modrinth?: ModrinthClient; curseforge?: CurseForgeClient };
 }
 
 export interface ContentInstallInput {
@@ -79,6 +81,7 @@ function toInstalled(record: {
   sizeBytes: number;
   installedAt: string;
   sha1: string | null;
+  pinned: boolean;
 }): InstalledContent {
   return {
     id: record.id,
@@ -95,15 +98,17 @@ function toInstalled(record: {
     sizeBytes: record.sizeBytes,
     installedAt: record.installedAt,
     sha1: record.sha1,
+    pinned: record.pinned,
   };
 }
 
 export class ContentManager {
-  private readonly modrinth = new ModrinthClient();
+  private readonly modrinth: ModrinthClient;
   private readonly curseforge: CurseForgeClient;
 
   constructor(private readonly options: ContentManagerOptions) {
-    this.curseforge = new CurseForgeClient(options.curseforgeApiKey());
+    this.modrinth = options.clients?.modrinth ?? new ModrinthClient();
+    this.curseforge = options.clients?.curseforge ?? new CurseForgeClient(options.curseforgeApiKey());
   }
 
   async search(query: ContentSearchQuery, source: ContentSource = 'modrinth'): Promise<ContentSearchResult> {
@@ -124,7 +129,13 @@ export class ContentManager {
     }
     if (input.kind === 'datapack') throw new LauncherError('UNSUPPORTED', 'Datapacks are installed manually via the world folder.');
     const kind = input.kind;
-    await this.installResolved(target, input.source, input.projectId, input.versionId ?? null, kind, new Set<string>(), 0);
+    let versionId = input.versionId ?? null;
+    if (!versionId) {
+      // Pinned rows keep their exact version on reinstall; an explicit version always wins.
+      const existing = this.options.content.findByProject(target.instanceId, input.projectId);
+      if (existing?.pinned && existing.versionId) versionId = existing.versionId;
+    }
+    await this.installResolved(target, input.source, input.projectId, versionId, kind, new Set<string>(), 0);
   }
 
   async installResolved(
@@ -141,6 +152,12 @@ export class ContentManager {
     if (visited.has(key)) return;
     visited.add(key);
     const version = await this.resolveVersion(target, source, projectId, versionId, kind);
+    if (!version.downloadUrl) {
+      throw new LauncherError(
+        'FORBIDDEN',
+        version.blockedReason ?? `This version of "${version.name}" cannot be downloaded automatically. Import the file manually.`,
+      );
+    }
     const existing = this.options.content.findByProject(target.instanceId, projectId);
     if (existing?.path) await removeIfExists(existing.path);
     const folder = join(target.gameDir, KIND_FOLDER[kind]);
@@ -173,6 +190,7 @@ export class ContentManager {
       installedAt: new Date().toISOString(),
       sha1: sha1 ?? (await sha1File(destination)),
       sourceUrl: version.downloadUrl,
+      pinned: existing?.pinned ?? false,
     };
     this.options.content.insert(record);
     this.options.logger.info('content', `Installed ${version.name} (${kind}) into ${target.instanceId}`);
@@ -204,14 +222,23 @@ export class ContentManager {
     }
     const loader = kind === 'mod' ? target.loaderType : null;
     const versions = await this.versions(source, projectId, { gameVersion: target.mcVersion, loader });
-    const compatible = versions.filter((version) => {
+    // Author-blocked versions stay out of auto-resolution (the user can still
+    // see them in the list and import the file manually).
+    const downloadable = versions.filter((version) => version.downloadUrl);
+    if (versions.length > 0 && downloadable.length === 0) {
+      throw new LauncherError(
+        'FORBIDDEN',
+        versions[0]?.blockedReason ?? 'Every version of this project disabled third-party downloads. Import the file manually.',
+      );
+    }
+    const compatible = downloadable.filter((version) => {
       if (!version.gameVersions.includes(target.mcVersion)) return false;
       if (kind !== 'mod' || !loader) return true;
       const expected = modrinthLoader(loader);
       if (!expected) return true;
       return version.loaders.some((entry) => entry.toLowerCase() === expected);
     });
-    const pool = compatible.length > 0 ? compatible : versions;
+    const pool = compatible.length > 0 ? compatible : downloadable;
     const preferred = pool.find((version) => version.releaseType === 'release') ?? pool.find((version) => version.releaseType === 'beta') ?? pool[0];
     if (!preferred) {
       throw notFound(`No compatible version of this ${kind} was found for Minecraft ${target.mcVersion}.`);
@@ -246,6 +273,13 @@ export class ContentManager {
     return toInstalled({ ...record, enabled });
   }
 
+  async setPinned(id: string, pinned: boolean): Promise<InstalledContent> {
+    const record = this.options.content.findById(id);
+    if (!record) throw notFound(`Content ${id} is not installed.`);
+    this.options.content.setPinned(id, pinned);
+    return toInstalled({ ...record, pinned });
+  }
+
   async importFile(input: { instanceId: string; kind: 'mod' | 'resourcepack' | 'shader'; filePath: string }): Promise<InstalledContent> {
     const target = await this.options.resolveInstance(input.instanceId);
     if (!(await pathExists(input.filePath))) throw notFound('The selected file does not exist.');
@@ -271,6 +305,7 @@ export class ContentManager {
       installedAt: new Date().toISOString(),
       sha1: await sha1File(destination),
       sourceUrl: null,
+      pinned: false,
     };
     this.options.content.insert(record);
     return toInstalled(record);
@@ -294,6 +329,12 @@ export class ContentManager {
       version = available.find((entry) => entry.releaseType === 'release') ?? available[0];
     }
     if (!version) throw notFound('No downloadable version was found for that modpack.');
+    if (!version.downloadUrl) {
+      throw new LauncherError(
+        'FORBIDDEN',
+        version.blockedReason ?? 'This modpack version disabled third-party downloads. Import the file manually.',
+      );
+    }
     const buffer = await this.downloadBuffer(version.downloadUrl);
     const entries = unzipSync(buffer);
     const indexRaw = entries['modrinth.index.json'];

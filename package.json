@@ -10,6 +10,12 @@
   },
   "scripts": {
     "dev": "pnpm --filter @klymon/desktop dev",
+    "dev:api": "pnpm --filter @klymon/api dev",
+    "dev:landing": "pnpm --filter @klymon/landing dev",
+    "dev:dashboard": "pnpm --filter @klymon/dashboard dev",
+    "dev:admin": "pnpm --filter @klymon/admin dev",
+    "dev:web": "pnpm --filter @klymon/landing --filter @klymon/dashboard --filter @klymon/admin --parallel dev",
+    "db:migrate": "pnpm --filter @klymon/api prisma:migrate",
     "build": "pnpm --filter @klymon/desktop build",
     "preview": "pnpm --filter @klymon/desktop preview",
     "package:win": "pnpm --filter @klymon/desktop package:win",
@@ -22,6 +28,7 @@
     "test:e2e": "node scripts/smoke.mjs",
     "test:e2e:install": "node scripts/e2e.mjs install",
     "test:e2e:launch": "node scripts/e2e.mjs launch",
+    "test:e2e:link": "node scripts/e2e.mjs link",
     "icon": "node scripts/generate-icon.mjs",
     "client:build": "node scripts/build-client-mod.mjs"
   },
@@ -33,7 +40,7 @@
     "electron-vite": "^4.0.1",
     "typescript": "^5.9.3",
     "vite-tsconfig-paths": "^5.1.4",
-    "vitest": "^3.2.4"
+    "vitest": "^5.1.0"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
@@ -41,6 +48,10 @@
       "electron",
       "electron-winstaller",
       "esbuild"
-    ]
+    ],
+    "overrides": {
+      "deepmerge-ts": "^8.0.2",
+      "@nestjs/cli>glob": "^14.0.6"
+    }
   }
 }

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Download, ExternalLink, Package, Search, Trash2 } from 'lucide-react';
+import { Download, ExternalLink, Package, Pin, PinOff, Search, Trash2 } from 'lucide-react';
 import type { ContentProject, ContentProjectType, ContentSearchResult, ContentSource, ContentVersion, InstalledContent } from '@klymon/shared-types';
 import { invoke, useAsync, errorMessage } from '../lib/api';
 import { useApp } from '../lib/app-context';
@@ -87,8 +87,8 @@ export function ContentBrowser({
 
   useEffect(() => {
     if (!selected) return;
-    const first = versions.data?.[0];
-    setSelectedVersion(first?.id ?? '');
+    const downloadable = (versions.data ?? []).find((version) => !version.blocked) ?? versions.data?.[0];
+    setSelectedVersion(downloadable?.id ?? '');
   }, [versions.data, selected]);
 
   const installTarget = useMemo(() => {
@@ -252,6 +252,19 @@ export function ContentBrowser({
                     variant="ghost"
                     size="icon"
                     onClick={() => {
+                      void invoke('content:pin', { id: item.id, pinned: !item.pinned })
+                        .then(() => installed.reload())
+                        .catch((error: unknown) => toast(errorMessage(error), 'error'));
+                    }}
+                    aria-label={item.pinned ? t('content.unpin') : t('content.pin')}
+                    title={item.pinned ? t('content.unpin') : t('content.pin')}
+                  >
+                    {item.pinned ? <PinOff className="size-3.5 text-primary" /> : <Pin className="size-3.5" />}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => {
                       void invoke('content:remove', { id: item.id })
                         .then(() => installed.reload())
                         .catch((error: unknown) => toast(errorMessage(error), 'error'));
@@ -279,7 +292,14 @@ export function ContentBrowser({
             <Button variant="ghost" onClick={() => setSelected(null)}>
               {t('common.cancel')}
             </Button>
-            <Button onClick={() => void install()} loading={installing} disabled={selectedVersion === '' && versions.loading}>
+            <Button
+              onClick={() => void install()}
+              loading={installing}
+              disabled={
+                (selectedVersion === '' && versions.loading) ||
+                (versions.data ?? []).find((version) => version.id === selectedVersion)?.blocked === true
+              }
+            >
               {t('common.install')}
             </Button>
           </>
@@ -309,7 +329,10 @@ export function ContentBrowser({
                 onValueChange={setSelectedVersion}
                 options={(versions.data ?? []).map((version) => ({
                   value: version.id,
-                  label: `${version.versionNumber} · ${version.gameVersions.slice(0, 2).join(', ')} · ${version.releaseType}`,
+                  label: `${version.versionNumber} · ${version.gameVersions.slice(0, 2).join(', ')} · ${version.releaseType}${
+                    version.blocked ? ` · ${t('content.blocked')}` : ''
+                  }`,
+                  disabled: version.blocked === true,
                 }))}
                 placeholder={(versions.data ?? []).length === 0 ? t('common.none') : undefined}
               />
@@ -318,6 +341,14 @@ export function ContentBrowser({
                   {formatDate((versions.data ?? []).find((version) => version.id === selectedVersion)?.publishedAt ?? '')} ·{' '}
                   {(versions.data ?? []).find((version) => version.id === selectedVersion)?.fileName}
                 </p>
+              ) : null}
+              {(versions.data ?? []).find((version) => version.id === selectedVersion)?.blocked ? (
+                <Alert variant="warning">
+                  {t('content.blockedHint')}{' '}
+                  <Button variant="link" size="sm" className="h-auto p-0" onClick={() => void invoke('app:open-external', { url: selected.projectUrl })}>
+                    <ExternalLink className="size-3" /> CurseForge
+                  </Button>
+                </Alert>
               ) : null}
             </div>
             {projectType === 'modpack' ? <Alert variant="info">{t('content.modpacksNote')}</Alert> : null}

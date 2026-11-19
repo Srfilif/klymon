@@ -4,6 +4,8 @@ import com.klymon.clientmenu.addon.Addon;
 import com.klymon.clientmenu.addon.BlockOverlayAddon;
 import com.klymon.clientmenu.cosmetic.CosmeticsManager;
 import com.klymon.clientmenu.cosmetic.SessionHeartbeat;
+import com.klymon.clientmenu.platform.PlatformLink;
+import com.klymon.clientmenu.thirdparty.ThirdPartyAddons;
 
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
@@ -55,6 +57,8 @@ public final class KlymonMenuClient implements ClientModInitializer {
         LOGGER.info("Klymon Client addons registered: {}", config.addons().all().size());
         CosmeticsManager.init();
         SessionHeartbeat.init();
+        PlatformLink.init();
+        ThirdPartyAddons.init();
         LOGGER.info("Klymon Client cosmetics ready (bridge, feature renderer, emote key, session heartbeat)");
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
@@ -66,9 +70,13 @@ public final class KlymonMenuClient implements ClientModInitializer {
             }
 
             KlymonHud.onTick(client);
+            ThirdPartyAddons.tick(client);
         });
 
-        HudRenderCallback.EVENT.register((context, tickCounter) -> KlymonHud.render(context));
+        HudRenderCallback.EVENT.register((context, tickCounter) -> {
+            KlymonHud.render(context);
+            ThirdPartyAddons.render(context);
+        });
     }
 
     /**
@@ -114,7 +122,7 @@ public final class KlymonMenuClient implements ClientModInitializer {
         return FabricLoader.getInstance()
                 .getModContainer("minecraft")
                 .map(container -> container.getMetadata().getVersion().getFriendlyString())
-                .orElse("1.21.1");
+                .orElse("?");
     }
 
     public static String loaderVersion() {

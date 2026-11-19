@@ -268,7 +268,14 @@ public final class Setting<T> {
         }
         try {
             switch (this.type) {
-                case BOOLEAN -> setBoolean(parseBoolean(raw));
+                case BOOLEAN -> {
+                    Boolean parsed = parseBooleanOrNull(raw);
+                    if (parsed == null) {
+                        reset();
+                    } else {
+                        setBoolean(parsed);
+                    }
+                }
                 case INT -> setInt(Integer.parseInt(raw.trim()));
                 case DOUBLE -> setDouble(Double.parseDouble(raw.trim()));
                 case ENUM -> setEnum(validatedOption(raw.trim()));
@@ -281,17 +288,26 @@ public final class Setting<T> {
         validate();
     }
 
-    private static boolean parseBoolean(String raw) {
-        String value = raw.trim().toLowerCase(Locale.ROOT);
-        return value.equals("true") || value.equals("1") || value.equals("yes") || value.equals("on");
+    /** Tri-state parse: unrecognized input returns null so callers can restore the default. */
+    private static Boolean parseBooleanOrNull(String raw) {
+        return switch (raw.trim().toLowerCase(Locale.ROOT)) {
+            case "true", "1", "yes", "on" -> Boolean.TRUE;
+            case "false", "0", "no", "off" -> Boolean.FALSE;
+            default -> null;
+        };
     }
 
-    /** Accepts {@code #AARRGGBB}, {@code #RRGGBB} and plain integers. */
+    /** Accepts {@code #AARRGGBB}, {@code #RRGGBB}, {@code #RGB} and plain integers. */
     public static int parseColor(String raw) {
         String value = raw.trim();
         if (value.startsWith("#")) {
-            long parsed = Long.parseLong(value.substring(1), 16);
-            if (value.length() == 7) {
+            String hex = value.substring(1);
+            if (hex.length() == 3) {
+                hex = new String(new char[]{hex.charAt(0), hex.charAt(0), hex.charAt(1),
+                        hex.charAt(1), hex.charAt(2), hex.charAt(2)});
+            }
+            long parsed = Long.parseLong(hex, 16);
+            if (hex.length() == 6) {
                 parsed |= 0xFF000000L;
             }
             return (int) parsed;

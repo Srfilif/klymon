@@ -7,6 +7,7 @@
   "author": "Klymon Launcher contributors",
   "license": "MIT",
   "dependencies": {
+    "@klymon/api-client": "workspace:*",
     "@klymon/authentication": "workspace:*",
     "@klymon/core": "workspace:*",
     "@klymon/database": "workspace:*",
@@ -20,6 +21,7 @@
     "@klymon/progression": "workspace:*",
     "@klymon/shared-types": "workspace:*",
     "@klymon/skin-manager": "workspace:*",
+    "@klymon/sync-engine": "workspace:*",
     "@klymon/version-manager": "workspace:*",
     "better-sqlite3": "^13.2.0",
     "class-variance-authority": "^0.7.1",

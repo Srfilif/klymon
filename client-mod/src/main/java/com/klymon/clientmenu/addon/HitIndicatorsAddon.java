@@ -3,6 +3,7 @@ package com.klymon.clientmenu.addon;
 import com.klymon.clientmenu.KlymonTheme;
 import com.klymon.clientmenu.hud.HudAnchor;
 import com.klymon.clientmenu.hud.HudElement;
+import com.klymon.clientmenu.logic.HurtEdge;
 
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
@@ -32,8 +33,8 @@ public final class HitIndicatorsAddon extends Addon implements HudElement, Ticka
 
     private long lastDealtMs = -1L;
     private long lastTakenMs = -1L;
-    private int lastPlayerHurt;
-    private int lastTargetHurt;
+    private final HurtEdge playerHurt = new HurtEdge();
+    private final HurtEdge targetHurt = new HurtEdge();
     private Entity lastTarget;
 
     public HitIndicatorsAddon() {
@@ -43,34 +44,30 @@ public final class HitIndicatorsAddon extends Addon implements HudElement, Ticka
     @Override
     public void tick(MinecraftClient client) {
         if (!enabled() || client.player == null || client.world == null) {
-            this.lastPlayerHurt = 0;
-            this.lastTargetHurt = 0;
+            this.playerHurt.reset();
+            this.targetHurt.reset();
             this.lastTarget = null;
             return;
         }
         long now = Util.getMeasuringTimeMs();
-        int playerHurt = client.player.hurtTime;
-        if (playerHurt > this.lastPlayerHurt && playerHurt >= client.player.maxHurtTime - 1) {
+        if (this.playerHurt.rose(client.player.hurtTime)) {
             this.lastTakenMs = now;
             if (this.particles.getBoolean()) {
                 burst(client, client.player.getX(), client.player.getY() + 1.0, client.player.getZ(), true);
             }
         }
-        this.lastPlayerHurt = playerHurt;
 
         Entity target = client.targetedEntity;
         if (target != this.lastTarget) {
             this.lastTarget = target;
-            this.lastTargetHurt = target instanceof LivingEntity living ? living.hurtTime : 0;
+            this.targetHurt.observe(target instanceof LivingEntity living ? living.hurtTime : 0);
         } else if (target instanceof LivingEntity living) {
-            int hurt = living.hurtTime;
-            if (hurt > this.lastTargetHurt && hurt >= living.maxHurtTime - 1) {
+            if (this.targetHurt.rose(living.hurtTime)) {
                 this.lastDealtMs = now;
                 if (this.particles.getBoolean()) {
                     burst(client, target.getX(), target.getY() + target.getHeight() / 2.0, target.getZ(), false);
                 }
             }
-            this.lastTargetHurt = hurt;
         }
     }
 

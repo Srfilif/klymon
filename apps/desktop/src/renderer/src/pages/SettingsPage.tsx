@@ -332,8 +332,12 @@ export function SettingsPage(): React.JSX.Element {
             </CardTitle>
           </CardHeader>
           <CardContent className="grid gap-3">
-            <Field label={t('settings.updateFeed')} hint="https://updates.example.com/klymon">
-              <Input value={draft.updateFeedUrl} onChange={(event) => patch({ updateFeedUrl: event.target.value })} />
+            <Field label={t('settings.updateFeed')} hint="GitHub releases (default) — set a generic feed URL to override">
+              <Input
+                value={draft.updateFeedUrl}
+                placeholder="https://updates.example.com/klymon"
+                onChange={(event) => patch({ updateFeedUrl: event.target.value })}
+              />
             </Field>
             <label className="flex items-center justify-between text-xs">
               {t('settings.betaUpdates')}

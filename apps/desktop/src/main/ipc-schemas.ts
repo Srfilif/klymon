@@ -12,6 +12,7 @@ import {
   zUpdateInstance,
 } from '@klymon/shared-types';
 import type { IpcChannel } from '@klymon/shared-types';
+import { KLYMON_CLIENT_VERSIONS } from '@klymon/shared-types';
 
 const zPath = z.string().min(1).max(4096);
 
@@ -99,6 +100,7 @@ export const IPC_SCHEMAS: Partial<Record<IpcChannel, z.ZodType>> = {
   'content:installed': z.object({ instanceId: zInstanceId, kind: z.enum(['mod', 'resourcepack', 'shader', 'modpack']).optional() }).strict(),
   'content:remove': z.object({ id: z.string().uuid() }).strict(),
   'content:toggle': z.object({ id: z.string().uuid(), enabled: z.boolean() }).strict(),
+  'content:pin': z.object({ id: z.string().uuid(), pinned: z.boolean() }).strict(),
   'content:import-file': z.object({ instanceId: zInstanceId, kind: z.enum(['mod', 'resourcepack', 'shader']) }).strict(),
   'content:install-modpack': z
     .object({
@@ -131,6 +133,9 @@ export const IPC_SCHEMAS: Partial<Record<IpcChannel, z.ZodType>> = {
     .strict(),
 
   'activity:list': z.object({ limit: z.number().int().min(1).max(200).optional() }).strict(),
+  'onboarding:event': z
+    .object({ step: z.number().int().min(0).max(5), action: z.enum(['step', 'finished', 'skipped']) })
+    .strict(),
   'servers:add': z
     .object({
       name: z.string().trim().min(1).max(60),
@@ -155,5 +160,17 @@ export const IPC_SCHEMAS: Partial<Record<IpcChannel, z.ZodType>> = {
   'progression:unequip': z.object({ slot: z.string().min(1).max(32) }).strict(),
   'progression:claim-quest': z.object({ id: z.string().min(1).max(64) }).strict(),
   'progression:set-title': z.object({ titleId: z.string().min(1).max(64).nullable() }).strict(),
+
+  'platform:login': z.object({ identifier: z.string().min(1).max(320), password: z.string().min(1).max(128) }).strict(),
+  'platform:register': z
+    .object({ username: z.string().min(3).max(20), email: z.string().email().max(320), password: z.string().min(8).max(128) })
+    .strict(),
+
+  'client:install': z.object({ mcVersion: z.enum(KLYMON_CLIENT_VERSIONS).optional() }).strict(),
+
+  'sync:select-profile': z.object({ profileId: z.string().uuid().nullable() }).strict(),
+  'sync:push': z.object({ namespace: z.string().min(1).max(32) }).strict(),
+  'sync:resolve': z.object({ namespace: z.string().min(1).max(32), keep: z.enum(['mine', 'theirs']) }).strict(),
+  'sync:revert': z.object({ namespace: z.string().min(1).max(32) }).strict(),
 };
 

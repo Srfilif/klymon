@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { ClipboardCopy, FileText, FolderOpen, MemoryStick, RefreshCw, RotateCcw, Wrench } from 'lucide-react';
+import { ClipboardCopy, ExternalLink, FileText, FolderOpen, MemoryStick, RefreshCw, RotateCcw, Wrench } from 'lucide-react';
 import type { CrashDiagnosis, CrashHintId } from '@klymon/shared-types';
 import { invoke, useEvent, errorMessage } from '../../lib/api';
 import { useApp } from '../../lib/app-context';
 import { useI18n, type TranslationKey } from '../../lib/i18n';
+import { crashHintUrl } from '../../lib/crash-hints';
 import { Alert } from '../ui/misc';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
@@ -194,6 +195,14 @@ export function CrashDialog(): React.JSX.Element {
                     {t(HINT_KEYS[hint.id].body, { memory: diagnosis.memoryMb, mc: diagnosis.mcVersion })}
                   </p>
                   <p className="mt-1 break-all font-mono text-[10px] text-muted-foreground/70">{hint.evidence}</p>
+                  <Button
+                    variant="link"
+                    size="sm"
+                    className="mt-0.5 h-auto p-0 text-[11px]"
+                    onClick={() => void invoke('app:open-external', { url: crashHintUrl(hint.id) }).catch(() => undefined)}
+                  >
+                    <ExternalLink className="size-3" /> {t('crash.learnMore')}
+                  </Button>
                 </div>
               ))}
             </div>

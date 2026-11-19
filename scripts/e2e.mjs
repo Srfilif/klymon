@@ -15,6 +15,7 @@ const target = process.argv[2] ?? 'all';
 const suites = {
   install: { file: 'tests/e2e-install.test.ts', env: { KLYMON_E2E: '1' } },
   launch: { file: 'tests/e2e-launch.test.ts', env: { KLYMON_E2E_LAUNCH: '1' } },
+  link: { file: 'tests/e2e-link.test.ts', env: { KLYMON_E2E_LINK: '1' } },
 };
 
 const selected = target === 'all' ? [suites.install, suites.launch] : [suites[target]];

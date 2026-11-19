@@ -3,11 +3,12 @@ import { app } from 'electron';
 import type { LauncherLogger } from '@klymon/core';
 import type { UpdateStatus } from '@klymon/shared-types';
 import type { SettingsService } from './settings';
+import { resolveUpdateFeed } from './update-feed';
 
 /**
- * Launcher self-update. Requires a configured update feed (generic provider):
- * without one the UI reports that updates are not configured instead of
- * pretending a check happened.
+ * Launcher self-update against the pinned GitHub Releases feed (a manual
+ * generic URL in Settings overrides it). Development builds report
+ * `disabled` instead of pretending a check happened.
  */
 export class UpdaterService {
   private status: UpdateStatus = { state: 'idle', version: null, progress: 0, message: '' };
@@ -48,12 +49,14 @@ export class UpdaterService {
       this.set({ state: 'disabled', message: 'Updates are disabled in development builds.' });
       return false;
     }
-    if (!settings.updateFeedUrl.trim()) {
-      this.set({ state: 'disabled', message: 'No update feed configured (Settings → Updates).' });
-      return false;
+    const feed = resolveUpdateFeed(settings);
+    autoUpdater.channel = feed.channel;
+    autoUpdater.allowPrerelease = feed.allowPrerelease;
+    if (feed.provider === 'github') {
+      autoUpdater.setFeedURL({ provider: 'github', owner: feed.owner!, repo: feed.repo! });
+    } else {
+      autoUpdater.setFeedURL({ provider: 'generic', url: feed.url! });
     }
-    autoUpdater.channel = settings.enableBetaUpdates ? 'beta' : 'latest';
-    autoUpdater.setFeedURL({ provider: 'generic', url: settings.updateFeedUrl.trim() });
     return true;
   }
 

@@ -5,6 +5,8 @@ import tailwindcss from '@tailwindcss/vite';
 
 const workspacePackages = [
   '@klymon/shared-types',
+  '@klymon/api-client',
+  '@klymon/sync-engine',
   '@klymon/core',
   '@klymon/database',
   '@klymon/download-manager',

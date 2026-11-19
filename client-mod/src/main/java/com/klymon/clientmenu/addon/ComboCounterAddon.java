@@ -28,7 +28,6 @@ public final class ComboCounterAddon extends Addon implements HudElement, Tickab
 
     private final ComboTracker tracker = new ComboTracker();
     private boolean attackDown;
-    private int lastPlayerHurt;
     private long lastHitRenderMs;
 
     public ComboCounterAddon() {
@@ -51,11 +50,7 @@ public final class ComboCounterAddon extends Addon implements HudElement, Tickab
             }
         }
         this.attackDown = attack;
-        int hurt = client.player.hurtTime;
-        if (hurt > this.lastPlayerHurt && hurt >= client.player.maxHurtTime - 1) {
-            this.tracker.breakCombo();
-        }
-        this.lastPlayerHurt = hurt;
+        this.tracker.noteHurtTime(client.player.hurtTime);
         this.tracker.combo(now, this.resetMs.getInt());
     }
 

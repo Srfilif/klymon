@@ -16,6 +16,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.klymon.clientmenu.platform.HandoffOffer;
 
 import net.fabricmc.loader.api.FabricLoader;
 
@@ -49,10 +50,11 @@ public final class KlymonBridge {
     private final int sessions;
     private final Map<String, Equipped> loadout;
     private final boolean fresh;
+    private final HandoffOffer handoff;
 
     private KlymonBridge(String displayName, String rankPrefix, int rankColor, String title,
             int level, int balance, long lifetimePoints, long playSeconds, int sessions,
-            Map<String, Equipped> loadout, boolean fresh) {
+            Map<String, Equipped> loadout, boolean fresh, HandoffOffer handoff) {
         this.displayName = displayName;
         this.rankPrefix = rankPrefix;
         this.rankColor = rankColor;
@@ -64,6 +66,7 @@ public final class KlymonBridge {
         this.sessions = sessions;
         this.loadout = loadout;
         this.fresh = fresh;
+        this.handoff = handoff;
     }
 
     public static Path file() {
@@ -102,7 +105,7 @@ public final class KlymonBridge {
 
     private static KlymonBridge defaults() {
         return new KlymonBridge(null, DEFAULT_PREFIX, DEFAULT_PREFIX_COLOR, null,
-                1, 0, 0L, 0L, 0, Map.of(), false);
+                1, 0, 0L, 0L, 0, Map.of(), false, null);
     }
 
     static KlymonBridge read(Path path) {
@@ -155,7 +158,7 @@ public final class KlymonBridge {
                     Math.max(0L, optLong(json, "lifetimePoints", 0L)),
                     Math.max(0L, optLong(json, "playSeconds", 0L)),
                     Math.max(0, optInt(json, "sessions", 0)),
-                    loadout, true);
+                    loadout, true, HandoffOffer.parse(json));
         } catch (Exception ignored) {
             return defaults();
         }
@@ -276,6 +279,11 @@ public final class KlymonBridge {
     /** True when the snapshot came from a real launcher export. */
     public boolean fresh() {
         return this.fresh;
+    }
+
+    /** The launcher's login handoff, if this export carries one. Never logged. */
+    public HandoffOffer handoff() {
+        return this.handoff;
     }
 
     static String debugJson(KlymonBridge bridge) {

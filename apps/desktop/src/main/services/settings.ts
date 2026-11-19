@@ -43,6 +43,8 @@ export class SettingsService {
       reducedMotion: false,
       fontScale: 1,
       clientInstanceId: null,
+      platformApiUrl: 'http://localhost:3001',
+      syncProfileId: null,
     };
     this.cache = this.load();
   }

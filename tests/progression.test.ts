@@ -198,6 +198,21 @@ describe('progression service', () => {
     expect(events.some((entry) => entry.event === 'progression:reward')).toBe(true);
   });
 
+  it('carries a launch handoff once and scrubs it on the next export', async () => {
+    handle = await createDatabase();
+    const gameDir = mkdtempSync(join(tmpdir(), 'klymon-game-'));
+    const { service } = createService(handle, gameDir);
+    const bridgeFile = join(gameDir, 'config', 'klymon-bridge.json');
+
+    await service.exportBridge(gameDir, { code: 'single-use', expiresAt: '2030-01-01T00:01:00.000Z', apiUrl: 'http://api.test' });
+    const withHandoff = JSON.parse(readFileSync(bridgeFile, 'utf8')) as { handoff?: { code: string; expiresAt: string; apiUrl: string } };
+    expect(withHandoff.handoff).toEqual({ code: 'single-use', expiresAt: '2030-01-01T00:01:00.000Z', apiUrl: 'http://api.test' });
+
+    await service.exportBridge(gameDir);
+    const scrubbed = JSON.parse(readFileSync(bridgeFile, 'utf8')) as Record<string, unknown>;
+    expect(scrubbed).not.toHaveProperty('handoff');
+  });
+
   it('sells, equips and gates cosmetics by level and funds', async () => {
     handle = await createDatabase();
     const gameDir = mkdtempSync(join(tmpdir(), 'klymon-game-'));

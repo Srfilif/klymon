@@ -47,6 +47,54 @@ export interface Settings {
   reducedMotion: boolean;
   fontScale: number;
   clientInstanceId: string | null;
+  platformApiUrl: string;
+  syncProfileId: string | null;
+}
+
+/** Steps in the first-run wizard. Shared by the renderer flow and the funnel tracker. */
+export const ONBOARDING_TOTAL_STEPS = 6;
+
+export type OnboardingFunnelAction = 'step' | 'finished' | 'skipped';
+
+export interface PlatformStatusModel {
+  signedIn: boolean;
+  username: string | null;
+  userId: string | null;
+  apiUrl: string;
+  persisted: boolean;
+}
+
+export interface SyncProfileModel {
+  id: string;
+  name: string;
+  documentCount: number;
+}
+
+export interface SyncDocStatusModel {
+  namespace: string;
+  baseVersion: number | null;
+  dirty: boolean;
+  queued: boolean;
+  conflict: { version: number; updatedBy: string | null } | null;
+  lkgVersion: number | null;
+}
+
+export type SyncPushState = 'pushed' | 'queued' | 'conflict' | 'skipped' | 'adopted';
+
+export interface SyncPushResultModel {
+  namespace: string;
+  status: SyncPushState;
+  version: number | null;
+  reason: string | null;
+}
+
+export type SyncPullState = 'up-to-date' | 'fast-forwarded' | 'dirty' | 'conflict' | 'skipped';
+
+export interface SyncPullResultModel {
+  namespace: string;
+  status: SyncPullState;
+  applied: boolean;
+  reason: string | null;
 }
 
 export type AccountType = 'microsoft' | 'offline';
@@ -213,7 +261,11 @@ export interface ContentVersion {
   versionNumber: string;
   gameVersions: string[];
   loaders: string[];
-  downloadUrl: string;
+  /** Null when the author disabled third-party downloads (CurseForge). */
+  downloadUrl: string | null;
+  /** True when `downloadUrl` is null by author choice (install shows `blockedReason`). */
+  blocked?: boolean;
+  blockedReason?: string | null;
   fileName: string;
   fileSize: number;
   hashes: Record<string, string>;
@@ -247,6 +299,8 @@ export interface InstalledContent {
   installedAt: string;
   sha1: string | null;
   sourceUrl?: string | null;
+  /** When true, reinstalling without an explicit version keeps `versionId`. */
+  pinned: boolean;
 }
 
 export interface DownloadStatus {

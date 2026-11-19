@@ -26,7 +26,8 @@ win:
   target:
     - target: nsis
       arch: [x64]
-  artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+  # Hyphenated on purpose (ADR-016): latest.yml must reference an existing URL.
+  artifactName: Klymon-Launcher-${version}-${os}-${arch}.${ext}
 nsis:
   oneClick: false
   perMachine: false
@@ -36,7 +37,7 @@ nsis:
   shortcutName: Klymon Launcher
   deleteAppDataOnUninstall: false
 portable:
-  artifactName: ${productName}-${version}-portable.${ext}
+  artifactName: Klymon-Launcher-${version}-portable.${ext}
 linux:
   icon: ../../build/icon.png
   category: Game
@@ -46,14 +47,14 @@ linux:
     - AppImage
     - deb
     - rpm
-  artifactName: ${productName}-${version}-${arch}.${ext}
+  artifactName: Klymon-Launcher-${version}-${arch}.${ext}
 mac:
   icon: ../../build/icon.png
   category: public.app-category.games
   target:
     - target: dmg
       arch: [x64, arm64]
-  artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+  artifactName: Klymon-Launcher-${version}-${os}-${arch}.${ext}
   hardenedRuntime: true
 # Release uploads target GitHub Releases (see .github/workflows/release.yml).
 # The in-app updater is unaffected: UpdaterService always overrides the feed

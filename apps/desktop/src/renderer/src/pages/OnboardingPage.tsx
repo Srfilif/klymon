@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, Check, Cpu, Languages, LogIn, Rocket, Sparkles, UserRound } from 'lucide-react';
-import type { ClientStatus, MemoryAdvice, SystemInfo } from '@klymon/shared-types';
+import { ONBOARDING_TOTAL_STEPS, type ClientStatus, type MemoryAdvice, type SystemInfo } from '@klymon/shared-types';
 import { invoke, errorMessage } from '../lib/api';
 import { useApp } from '../lib/app-context';
 import { useI18n } from '../lib/i18n';
@@ -10,7 +10,12 @@ import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
 import { Field, Input } from '../components/ui/input';
 
-const STEPS = 6;
+const STEPS = ONBOARDING_TOTAL_STEPS;
+
+/** Fire-and-forget funnel event: onboarding must work even if tracking fails. */
+function reportFunnel(step: number, action: 'step' | 'finished' | 'skipped'): void {
+  void invoke('onboarding:event', { step, action }).catch(() => undefined);
+}
 
 export function OnboardingPage(): React.JSX.Element {
   const { t } = useI18n();
@@ -49,6 +54,13 @@ export function OnboardingPage(): React.JSX.Element {
       .catch(() => setJavaReady(false));
   }, []);
 
+  const reportedEntry = useRef(false);
+  useEffect(() => {
+    if (reportedEntry.current) return;
+    reportedEntry.current = true;
+    reportFunnel(0, 'step');
+  }, []);
+
   const finish = async (): Promise<void> => {
     setCreating(true);
     try {
@@ -66,6 +78,7 @@ export function OnboardingPage(): React.JSX.Element {
       }
       await refreshAccounts();
       await refreshInstances();
+      reportFunnel(STEPS - 1, 'finished');
     } catch (error) {
       toast(errorMessage(error), 'error');
     } finally {
@@ -120,7 +133,14 @@ export function OnboardingPage(): React.JSX.Element {
                 </p>
               </div>
             </div>
-            <Button variant="ghost" size="sm" onClick={() => void updateSettings({ onboardingCompleted: true })}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                reportFunnel(step, 'skipped');
+                void updateSettings({ onboardingCompleted: true });
+              }}
+            >
               {t('onboarding.skip')}
             </Button>
           </div>
@@ -268,7 +288,13 @@ export function OnboardingPage(): React.JSX.Element {
               <ArrowLeft className="size-4" /> {t('common.back')}
             </Button>
             {step < STEPS - 1 ? (
-              <Button onClick={() => setStep((value) => Math.min(STEPS - 1, value + 1))}>
+              <Button
+                onClick={() => {
+                  const next = Math.min(STEPS - 1, step + 1);
+                  if (next !== step) reportFunnel(next, 'step');
+                  setStep(next);
+                }}
+              >
                 {t('common.continue')} <ArrowRight className="size-4" />
               </Button>
             ) : (

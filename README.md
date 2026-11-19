@@ -39,6 +39,21 @@ node scripts/smoke.mjs   # launch the built app over CDP and assert the UI boots
 node scripts/verify-client.mjs   # install the Klymon Client over IPC and launch it for real
 ```
 
+Web platform (API + landing + dashboards), each in its own terminal:
+
+```bash
+pnpm dev:api         # NestJS -> http://localhost:3001 (Swagger at /docs)
+pnpm dev:landing     # landing -> http://localhost:3000
+pnpm dev:dashboard   # user dashboard -> http://localhost:3002
+pnpm dev:admin       # admin panel -> http://localhost:3003
+pnpm dev:web         # landing + dashboard + admin together
+```
+
+First run needs a Postgres the API can reach: copy
+`apps/api/.env.example` to `apps/api/.env`, point `DATABASE_URL` at it, then
+`pnpm db:migrate`. The three webs default to `http://localhost:3001` when
+their own `.env` is missing.
+
 End-to-end tests that hit real Mojang/Fabric servers are opt-in:
 
 ```bash

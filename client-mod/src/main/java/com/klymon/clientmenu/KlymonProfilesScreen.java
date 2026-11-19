@@ -27,11 +27,14 @@ import net.minecraft.util.Util;
 public final class KlymonProfilesScreen extends Screen {
     private static final int PANEL_WIDTH = 520;
     private static final int PANEL_HEIGHT = 300;
+    private static final int PAGE_SIZE = 9;
 
     private final Screen parent;
     private String selectedId;
     private String renameText;
     private String status;
+    private int profilePage;
+    private int importIndex;
 
     public KlymonProfilesScreen(Screen parent) {
         super(Text.translatable("klymon.profiles.title"));
@@ -60,13 +63,12 @@ public final class KlymonProfilesScreen extends Screen {
         int panelY = (this.height - PANEL_HEIGHT) / 2;
         int leftY = panelY + 48;
 
-        // Left: profile list (select).
+        // Left: profile list (select), paged so long lists stay reachable.
         List<String> ids = ProfileManager.orderedIds(document);
+        int pages = ProfileManager.pageCount(ids.size(), PAGE_SIZE);
+        this.profilePage = Math.max(0, Math.min(this.profilePage, pages - 1));
         int shown = 0;
-        for (String id : ids) {
-            if (shown >= 9) {
-                break;
-            }
+        for (String id : ProfileManager.page(ids, this.profilePage, PAGE_SIZE)) {
             ProfileDocument.Profile profile = document.profiles.get(id);
             String label = (id.equals(document.activeProfile) ? "✓ " : "") + profile.name
                     + (profile.builtin ? " ●" : "");
@@ -81,6 +83,19 @@ public final class KlymonProfilesScreen extends Screen {
                             profile.builtin ? "klymon.profiles.builtinHint" : "klymon.profiles.customHint")))
                     .build());
             shown++;
+        }
+        if (pages > 1) {
+            int pageY = leftY + shown * 22 + 4;
+            this.addDrawableChild(ButtonWidget.builder(Text.literal("<"), button -> {
+                        this.profilePage = Math.max(0, this.profilePage - 1);
+                        this.clearAndInit();
+                    })
+                    .dimensions(panelX + 20, pageY, 93, 20).build());
+            this.addDrawableChild(ButtonWidget.builder(Text.literal(">"), button -> {
+                        this.profilePage = Math.min(pages - 1, this.profilePage + 1);
+                        this.clearAndInit();
+                    })
+                    .dimensions(panelX + 117, pageY, 93, 20).build());
         }
 
         // Right: actions for the selection.
@@ -203,14 +218,23 @@ public final class KlymonProfilesScreen extends Screen {
         // Import (recent export files) + server binding.
         List<Path> imports = importCandidates();
         if (!imports.isEmpty()) {
-            Path candidate = imports.get(0);
+            this.importIndex = Math.floorMod(this.importIndex, imports.size());
+            Path candidate = imports.get(this.importIndex);
             this.addDrawableChild(ButtonWidget.builder(
                             Text.translatable("klymon.profiles.import", candidate.getFileName().toString()),
                             button -> {
                                 try {
+                                    long size = Files.size(candidate);
+                                    if (size > ProfileManager.MAX_EXPORT_BYTES) {
+                                        throw new IllegalArgumentException("Profile export is too large ("
+                                                + size + " bytes, max " + ProfileManager.MAX_EXPORT_BYTES + ")");
+                                    }
                                     String json = Files.readString(candidate, StandardCharsets.UTF_8);
                                     this.selectedId = ProfileManager.importProfile(document, json);
-                                    config().save();
+                                    if (!config().save()) {
+                                        String detail = config().lastSaveError();
+                                        throw new IllegalStateException(detail != null ? detail : "Could not save config");
+                                    }
                                     this.status = Text.translatable("klymon.profiles.imported",
                                             document.profiles.get(this.selectedId).name).getString();
                                 } catch (Exception error) {
@@ -221,6 +245,19 @@ public final class KlymonProfilesScreen extends Screen {
                     .dimensions(rx, ry, rw, 20)
                     .tooltip(Tooltip.of(Text.translatable("klymon.profiles.importHint", imports.size())))
                     .build());
+            if (imports.size() > 1) {
+                ry += 24;
+                this.addDrawableChild(ButtonWidget.builder(Text.literal("<"), button -> {
+                            this.importIndex = Math.floorMod(this.importIndex - 1, imports.size());
+                            this.clearAndInit();
+                        })
+                        .dimensions(rx, ry, (rw - 4) / 2, 20).build());
+                this.addDrawableChild(ButtonWidget.builder(Text.literal(">"), button -> {
+                            this.importIndex = Math.floorMod(this.importIndex + 1, imports.size());
+                            this.clearAndInit();
+                        })
+                        .dimensions(rx + (rw - 4) / 2 + 4, ry, (rw - 4) / 2, 20).build());
+            }
             ry += 24;
         }
 

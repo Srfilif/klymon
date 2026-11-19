@@ -2,60 +2,81 @@ import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { unzipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
-import { KLYMON_CLIENT, CLIENT_MOD_FILE } from '../apps/desktop/src/main/services/client';
+import {
+  DEFAULT_CLIENT_VERSION,
+  KLYMON_CLIENT_VERSIONS,
+  KLYMON_CLIENTS,
+  clientModSourceFile,
+} from '@klymon/shared-types';
 
-const clientModJar = fileURLToPath(new URL(`../apps/desktop/resources/client-mod/${CLIENT_MOD_FILE}`, import.meta.url));
+const jarFor = (mcVersion: string) =>
+  fileURLToPath(new URL(`../apps/desktop/resources/client-mod/${clientModSourceFile(mcVersion)}`, import.meta.url));
 
-describe('Klymon Client profile', () => {
-  it('targets a single Minecraft version with a supported loader', () => {
-    expect(KLYMON_CLIENT.mcVersion).toMatch(/^\d+\.\d+(\.\d+)?$/);
-    expect(KLYMON_CLIENT.loaderType).toBe('fabric');
+describe('Klymon Client profiles', () => {
+  it('supports every listed Minecraft version with Fabric', () => {
+    expect(KLYMON_CLIENT_VERSIONS).toContain(DEFAULT_CLIENT_VERSION);
+    for (const mcVersion of KLYMON_CLIENT_VERSIONS) {
+      expect(mcVersion).toMatch(/^\d+\.\d+(\.\d+)?$/);
+      const profile = KLYMON_CLIENTS[mcVersion];
+      expect(profile.mcVersion).toBe(mcVersion);
+      expect(profile.loaderType).toBe('fabric');
+    }
   });
 
   it('does not repeat mods, which would install duplicate jars', () => {
-    const slugs = KLYMON_CLIENT.mods.map((mod) => mod.slug);
-    expect(new Set(slugs).size).toBe(slugs.length);
-    expect(slugs.length).toBeGreaterThanOrEqual(10);
-    // Requires Sodium <0.6, which conflicts with the Sodium 0.8.x line for 1.21.1.
-    expect(slugs).not.toContain('cull-less-leaves');
+    for (const mcVersion of KLYMON_CLIENT_VERSIONS) {
+      const slugs = KLYMON_CLIENTS[mcVersion].mods.map((mod) => mod.slug);
+      expect(new Set(slugs).size).toBe(slugs.length);
+      expect(slugs.length).toBeGreaterThanOrEqual(10);
+      // Requires Sodium <0.6, which conflicts with the Sodium 0.8.x line.
+      expect(slugs).not.toContain('cull-less-leaves');
+    }
   });
 
   it('retires removed mods instead of re-installing them', () => {
-    const slugs = new Set<string>(KLYMON_CLIENT.mods.map((mod) => mod.slug));
-    expect(KLYMON_CLIENT.retiredSlugs.length).toBeGreaterThan(0);
-    for (const retired of KLYMON_CLIENT.retiredSlugs) {
-      expect(slugs.has(retired)).toBe(false);
-      expect(retired).toMatch(/^[a-z0-9][a-z0-9-]*$/);
+    for (const mcVersion of KLYMON_CLIENT_VERSIONS) {
+      const profile = KLYMON_CLIENTS[mcVersion];
+      const slugs = new Set<string>(profile.mods.map((mod) => mod.slug));
+      expect(profile.retiredSlugs.length).toBeGreaterThan(0);
+      for (const retired of profile.retiredSlugs) {
+        expect(slugs.has(retired)).toBe(false);
+        expect(retired).toMatch(/^[a-z0-9][a-z0-9-]*$/);
+      }
+      // The stale jar pins Sodium <0.6 and hard-fails the launch, so it must be pruned.
+      expect(profile.retiredSlugs as readonly string[]).toContain('cull-less-leaves');
     }
-    // The stale jar pins Sodium <0.6 and hard-fails the launch, so it must be pruned.
-    expect(KLYMON_CLIENT.retiredSlugs as readonly string[]).toContain('cull-less-leaves');
   });
 
   it('uses valid Modrinth slugs and keeps memory within safe bounds', () => {
-    for (const mod of KLYMON_CLIENT.mods) {
-      expect(mod.slug).toMatch(/^[a-z0-9][a-z0-9-]*$/);
-      expect(mod.title.trim().length).toBeGreaterThan(0);
+    for (const mcVersion of KLYMON_CLIENT_VERSIONS) {
+      const profile = KLYMON_CLIENTS[mcVersion];
+      for (const mod of profile.mods) {
+        expect(mod.slug).toMatch(/^[a-z0-9][a-z0-9-]*$/);
+        expect(mod.title.trim().length).toBeGreaterThan(0);
+      }
+      expect(profile.minMemoryMb).toBeGreaterThanOrEqual(512);
+      expect(profile.maxMemoryMb).toBeGreaterThanOrEqual(profile.minMemoryMb);
     }
-    expect(KLYMON_CLIENT.minMemoryMb).toBeGreaterThanOrEqual(512);
-    expect(KLYMON_CLIENT.maxMemoryMb).toBeGreaterThanOrEqual(KLYMON_CLIENT.minMemoryMb);
   });
 
   it('passes only well-formed JVM flags', () => {
-    for (const flag of KLYMON_CLIENT.jvmArgs) {
-      expect(flag.startsWith('-')).toBe(true);
+    for (const mcVersion of KLYMON_CLIENT_VERSIONS) {
+      for (const flag of KLYMON_CLIENTS[mcVersion].jvmArgs) {
+        expect(flag.startsWith('-')).toBe(true);
+      }
     }
   });
 });
 
-describe('Klymon Client menu mod', () => {
+describe.each(KLYMON_CLIENT_VERSIONS.map((mcVersion) => ({ mcVersion })))('Klymon Client menu mod ($mcVersion)', ({ mcVersion }) => {
   it('ships a valid Fabric mod jar', () => {
-    expect(existsSync(clientModJar)).toBe(true);
-    const entries = unzipSync(readFileSync(clientModJar));
+    expect(existsSync(jarFor(mcVersion))).toBe(true);
+    const entries = unzipSync(readFileSync(jarFor(mcVersion)));
     expect(Object.keys(entries)).toContain('fabric.mod.json');
     const metadata = JSON.parse(new TextDecoder().decode(entries['fabric.mod.json']));
     expect(metadata.id).toBe('klymon-menu');
     expect(metadata.environment).toBe('client');
-    expect(metadata.depends.minecraft).toBe('~1.21.1');
+    expect(metadata.depends.minecraft).toBe(`~${mcVersion}`);
     expect(metadata.entrypoints.client).toContain('com.klymon.clientmenu.KlymonMenuClient');
     // The title-screen button and its screen must be inside the jar.
     expect(Object.keys(entries).some((name) => name.endsWith('KlymonMenuClient.class'))).toBe(true);
@@ -64,7 +85,7 @@ describe('Klymon Client menu mod', () => {
   });
 
   it('is remapped to intermediary names, not Yarn names', () => {
-    const entries = unzipSync(readFileSync(clientModJar));
+    const entries = unzipSync(readFileSync(jarFor(mcVersion)));
     const classes = Object.entries(entries)
       .filter(([name]) => name.endsWith('.class'))
       .map(([, data]) => Buffer.from(data));
@@ -74,7 +95,7 @@ describe('Klymon Client menu mod', () => {
   });
 
   it('ships the client UI: title menu, settings, addons, HUD and config', () => {
-    const entries = unzipSync(readFileSync(clientModJar));
+    const entries = unzipSync(readFileSync(jarFor(mcVersion)));
     const classes = Object.keys(entries).filter((name) => name.endsWith('.class'));
     for (const screen of [
       'KlymonTitleScreen',
@@ -90,7 +111,7 @@ describe('Klymon Client menu mod', () => {
   });
 
   it('keeps the Spanish and English dictionaries in sync', () => {
-    const entries = unzipSync(readFileSync(clientModJar));
+    const entries = unzipSync(readFileSync(jarFor(mcVersion)));
     const decode = (name: string) => JSON.parse(new TextDecoder().decode(entries[name]));
     const es = decode('assets/klymon-menu/lang/es_es.json');
     const en = decode('assets/klymon-menu/lang/en_us.json');

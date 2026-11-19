@@ -11,6 +11,7 @@ import type { LaunchPhase, LaunchState, LoaderType, VersionInstallResult } from 
 import type { SettingsService } from './settings';
 import type { AccountService } from './accounts';
 import type { CrashService } from './crash';
+import type { PlatformAuthService } from './platform';
 import {
   readHeartbeat,
   resolveSessionElapsed,
@@ -33,6 +34,7 @@ export interface GameServiceDeps {
   settings: SettingsService;
   crash: CrashService;
   progression: ProgressionService | null;
+  platform: PlatformAuthService | null;
   launcherVersion: string;
   emit: (event: 'launch:state' | 'game:log' | 'game:crash', payload: unknown) => void;
 }
@@ -91,7 +93,7 @@ export class GameService {
     this.update({ phase, message, progress });
   }
 
-  private async ensureJava(instance: { javaPath: string | null }, mcVersion: string): Promise<string> {
+  private async ensureJava(instance: { javaPath: string | null }, mcVersion: string, instanceId: string | null): Promise<string> {
     if (instance.javaPath) {
       const runtime = await this.deps.java.validateExecutable(instance.javaPath);
       return runtime.path;
@@ -105,6 +107,14 @@ export class GameService {
     if (this.deps.settings.get().autoUpdateJava) {
       this.phase('checking-java', `Installing Java ${requirement.majorVersion} (${requirement.component})`, 0.05);
       const runtime = await this.deps.java.ensureRuntime(requirement);
+      this.deps.activity.add({
+        id: randomUUID(),
+        kind: 'java',
+        instanceId,
+        message: `Provisioned Java ${runtime.major} (${requirement.component})`,
+        detail: runtime.path,
+        createdAt: new Date().toISOString(),
+      });
       return runtime.path;
     }
     const fallback = await this.deps.java.resolveForMajor(requirement.majorVersion);
@@ -154,7 +164,7 @@ export class GameService {
       };
     }
 
-    const javaPath = input.javaPath ?? (await this.ensureJava({ javaPath: null }, input.mcVersion));
+    const javaPath = input.javaPath ?? (await this.ensureJava({ javaPath: null }, input.mcVersion, null));
     const loader = await this.deps.modloaders.install({
       type: loaderType,
       mcVersion: input.mcVersion,
@@ -226,10 +236,11 @@ export class GameService {
     }
 
     this.phase('checking-java', 'Checking Java runtime', 0.2);
-    const javaPath = await this.ensureJava(instance, instance.mcVersion);
+    const javaPath = await this.ensureJava(instance, instance.mcVersion, instanceId);
 
     this.phase('preparing', 'Preparing launch arguments', 0.35);
     const refreshed = this.deps.instances.get(instanceId);
+    await this.exportLaunchBridge(refreshed.gameDir);
     let version: ResolvedVersion;
     try {
       version = await this.deps.manifests.resolve(refreshed.launchVersionId);
@@ -314,6 +325,22 @@ export class GameService {
       createdAt: new Date().toISOString(),
     });
     return { pid };
+  }
+
+  /**
+   * Pre-launch bridge export carrying the platform handoff (§6). Best effort:
+   * signed-out, offline or API errors all launch without it, and the periodic
+   * tick exports scrub the code from disk afterwards.
+   */
+  private async exportLaunchBridge(gameDir: string): Promise<void> {
+    const { progression, platform } = this.deps;
+    if (!progression) return;
+    try {
+      const handoff = await platform?.handoff();
+      await progression.exportBridge(gameDir, handoff ?? null);
+    } catch (error) {
+      this.deps.logger.warn('game', `Launch bridge export failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   kill(): void {

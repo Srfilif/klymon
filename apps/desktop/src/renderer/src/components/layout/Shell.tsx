@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import {
   Boxes,
+  Cloud,
   Download,
   LayoutDashboard,
   Layers,
@@ -48,6 +49,7 @@ const NAV_ITEMS: { to: string; labelKey: TranslationKey; icon: typeof Play }[] =
   { to: '/skins', labelKey: 'nav.skins', icon: Shirt },
   { to: '/music', labelKey: 'nav.music', icon: Music },
   { to: '/news', labelKey: 'nav.news', icon: Newspaper },
+  { to: '/platform', labelKey: 'nav.platform', icon: Cloud },
   { to: '/settings', labelKey: 'nav.settings', icon: SettingsIcon },
 ];
 
